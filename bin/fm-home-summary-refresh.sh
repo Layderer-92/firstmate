@@ -25,6 +25,8 @@
 # teardown use that mode so this side-band publication can never change their
 # result. Without it, failures are printed and returned to the direct caller
 # for tests and diagnostics.
+# The same locked refresh also derives and atomically publishes the redacted
+# state/cockpit-observation.json contract owned by fm-cockpit-observation.sh.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,6 +37,7 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 PROJECTS="${FM_PROJECTS_OVERRIDE:-$FM_HOME/projects}"
 LEDGER="$STATE/home-summary.json"
+COCKPIT_LEDGER="$STATE/cockpit-observation.json"
 ERROR_LOG="$STATE/.home-summary-refresh.log"
 REFRESH_LOCK="$STATE/.home-summary-refresh.lock"
 ERROR_LOG_MAX_BYTES=${FM_HOME_SUMMARY_ERROR_LOG_MAX_BYTES:-65536}
@@ -46,6 +49,7 @@ HOME_SUMMARY_ERROR=
 HOME_SUMMARY_FAILURE_STAMP=
 HOME_SUMMARY_TMP=
 HOME_SUMMARY_ERR_TMP=
+COCKPIT_OBSERVATION_TMP=
 HOME_SUMMARY_LOCK_HELD=0
 
 # shellcheck source=bin/fm-timeout-lib.sh
@@ -88,6 +92,7 @@ fi
 home_summary_cleanup() {
   [ -z "$HOME_SUMMARY_TMP" ] || rm -f -- "$HOME_SUMMARY_TMP" 2>/dev/null || true
   [ -z "$HOME_SUMMARY_ERR_TMP" ] || rm -f -- "$HOME_SUMMARY_ERR_TMP" 2>/dev/null || true
+  [ -z "$COCKPIT_OBSERVATION_TMP" ] || rm -f -- "$COCKPIT_OBSERVATION_TMP" 2>/dev/null || true
   if [ "$HOME_SUMMARY_LOCK_HELD" -eq 1 ]; then
     fm_lock_release "$REFRESH_LOCK" || true
     HOME_SUMMARY_LOCK_HELD=0
@@ -182,6 +187,24 @@ home_summary_refresh_once() {
     return 1
   fi
   HOME_SUMMARY_TMP=
+  COCKPIT_OBSERVATION_TMP=$(umask 077; mktemp "$STATE/.cockpit-observation.json.XXXXXX") || {
+    home_summary_fail "private summary published, but Cockpit publication staging failed"
+    return 1
+  }
+  if ! "$SCRIPT_DIR/fm-cockpit-observation.sh" --project-summary "$LEDGER" \
+      > "$COCKPIT_OBSERVATION_TMP"; then
+    home_summary_fail "private summary published, but Cockpit observation projection failed"
+    return 1
+  fi
+  if ! chmod 644 "$COCKPIT_OBSERVATION_TMP" 2>/dev/null; then
+    home_summary_fail "private summary published, but Cockpit publication mode failed"
+    return 1
+  fi
+  if ! mv -f -- "$COCKPIT_OBSERVATION_TMP" "$COCKPIT_LEDGER" 2>/dev/null; then
+    home_summary_fail "private summary published, but atomic Cockpit observation replacement failed: $COCKPIT_LEDGER"
+    return 1
+  fi
+  COCKPIT_OBSERVATION_TMP=
   fm_lock_release "$REFRESH_LOCK"
   HOME_SUMMARY_LOCK_HELD=0
   trap - EXIT HUP INT TERM
