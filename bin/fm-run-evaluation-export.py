@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import sys
 import tempfile
@@ -27,6 +28,18 @@ PRODUCER_ADAPTER = "firstmate-run-evaluation-export"
 PRODUCER_ADAPTER_VERSION = "1"
 OUTPUT_NAME = "cockpit-run-evaluation.json"
 SOURCE_DIRECTORY_NAME = "run-evaluations"
+COMMON_CREDENTIAL_SHAPE = re.compile(
+    r"(?:"
+    r"github_pat_[A-Za-z0-9_]{20,}|"
+    r"gh[pousr]_[A-Za-z0-9]{20,}|"
+    r"glpat-[A-Za-z0-9_-]{20,}|"
+    r"(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}|"
+    r"sk-(?:ant-|proj-|svcacct-)?[A-Za-z0-9_-]{20,}|"
+    r"xox[baprs]-[A-Za-z0-9-]{20,}|"
+    r"AIza[0-9A-Za-z_-]{35}|"
+    r"(?:AKIA|ASIA)[A-Z0-9]{16}"
+    r")"
+)
 
 
 class ExportError(RuntimeError):
@@ -145,7 +158,6 @@ def primary_validation_reason(findings: list[dict[str, str]]) -> str:
     if codes & {
         "evaluation_data_class_too_low",
         "evidence_class_exceeds_evaluation",
-        "data_class_invalid",
     }:
         return "classification_blocked"
     return "source_invalid"
@@ -171,10 +183,23 @@ def evidence_is_exportable(document: dict[str, Any], allowed_data_classes: set[s
     return True
 
 
-def source_record(document: dict[str, Any], raw: bytes) -> dict[str, Any]:
+def contains_credential_shaped_value(document: dict[str, Any], validator: Any) -> bool:
+    serialized = json.dumps(
+        document,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return bool(
+        validator.CREDENTIAL_SHAPE.search(serialized)
+        or COMMON_CREDENTIAL_SHAPE.search(serialized)
+    )
+
+
+def source_record(document: dict[str, Any], source_digest: str) -> dict[str, Any]:
     return {
         "sourceEvaluationId": document["evaluationId"],
-        "sourceEvaluationDigest": "sha256:" + hashlib.sha256(raw).hexdigest(),
+        "sourceEvaluationDigest": source_digest,
         "runId": document["derivedFrom"]["agentRunRecord"]["runId"],
         "evaluatedAt": document["evaluatedAt"],
         "taskClass": document["contextAxes"]["taskClass"],
@@ -201,7 +226,7 @@ def regular_source_files(source_dir: Path) -> list[Path]:
         if source_dir.is_symlink():
             raise ExportError("the run-evaluation source directory must not be a symlink")
         if not source_dir.exists():
-            return []
+            raise ExportError("the run-evaluation source directory does not exist")
         if not source_dir.is_dir():
             raise ExportError("the run-evaluation source path is not a directory")
         return sorted(source_dir.glob("*.json"), key=lambda path: path.name)
@@ -227,38 +252,58 @@ def read_candidates(
                 withheld["source_read_failed"] += 1
                 continue
             raw = path.read_bytes()
-            document = load_json_bytes(raw)
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        except OSError:
             withheld["source_read_failed"] += 1
             continue
-        if (
+        try:
+            document = load_json_bytes(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError):
+            withheld["source_invalid"] += 1
+            continue
+        declared_classification_block = (
             isinstance(document, dict)
             and document.get("kind") == validator.EVALUATION_KIND
-            and document.get("dataClass") not in allowed_data_classes
-        ):
-            withheld["classification_blocked"] += 1
+            and isinstance(document.get("dataClass"), str)
+            and document["dataClass"] in validator.DATA_CLASS_ORDER
+            and document["dataClass"] not in allowed_data_classes
+        )
+        declared_credential_block = (
+            isinstance(document, dict)
+            and contains_credential_shaped_value(document, validator)
+        )
+        try:
+            findings = validator.validate_evaluation(document)
+        except Exception:
+            withheld["source_invalid"] += 1
             continue
-        findings = validator.validate_document(document, source_bytes=len(raw))
         if findings:
-            withheld[primary_validation_reason(findings)] += 1
+            reason = (
+                "classification_blocked"
+                if declared_classification_block
+                else "redaction_blocked"
+                if declared_credential_block
+                else primary_validation_reason(findings)
+            )
+            withheld[reason] += 1
             continue
-        if not isinstance(document, dict) or document.get("kind") != validator.EVALUATION_KIND:
-            withheld["source_invalid"] += 1
-            continue
-        if document.get("state", {}).get("status") == "invalid":
-            withheld["source_invalid"] += 1
-            continue
-        if not evidence_is_exportable(document, allowed_data_classes):
-            withheld["redaction_blocked"] += 1
-            continue
-        record = source_record(document, raw)
+        block_reason = None
+        if declared_classification_block:
+            block_reason = "classification_blocked"
+        elif document["state"]["status"] == "invalid":
+            block_reason = "source_invalid"
+        elif declared_credential_block:
+            block_reason = "redaction_blocked"
+        elif not evidence_is_exportable(document, allowed_data_classes):
+            block_reason = "redaction_blocked"
         candidates.append(
             {
-                "record": record,
+                "document": document,
                 "sourceRevision": document["freshness"]["sourceRevision"],
                 "evaluatedAt": document["evaluatedAt"],
                 "evaluationId": document["evaluationId"],
-                "digest": record["sourceEvaluationDigest"],
+                "runId": document["derivedFrom"]["agentRunRecord"]["runId"],
+                "digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
+                "blockReason": block_reason,
             }
         )
     return candidates, withheld
@@ -268,9 +313,19 @@ def select_current_revisions(
     candidates: list[dict[str, Any]],
     withheld: Counter[str],
 ) -> list[dict[str, Any]]:
-    by_run: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    by_evaluation: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for candidate in candidates:
-        by_run[candidate["record"]["runId"]].append(candidate)
+        by_evaluation[candidate["evaluationId"]].append(candidate)
+    identity_safe: list[dict[str, Any]] = []
+    for group in by_evaluation.values():
+        if len({item["runId"] for item in group}) > 1:
+            withheld["evaluation_identity_conflict"] += len(group)
+        else:
+            identity_safe.extend(group)
+
+    by_run: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for candidate in identity_safe:
+        by_run[candidate["runId"]].append(candidate)
     selected: list[dict[str, Any]] = []
     for group in by_run.values():
         max_revision = max(item["sourceRevision"] for item in group)
@@ -287,18 +342,13 @@ def select_current_revisions(
         if len(unique) != 1:
             withheld["revision_conflict"] += len(unique)
             continue
-        selected.append(next(iter(unique.values())))
-
-    by_evaluation: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for item in selected:
-        by_evaluation[item["evaluationId"]].append(item)
-    result: list[dict[str, Any]] = []
-    for group in by_evaluation.values():
-        if len(group) == 1:
-            result.extend(group)
+        current = next(iter(unique.values()))
+        if current["blockReason"] is not None:
+            withheld[current["blockReason"]] += 1
         else:
-            withheld["evaluation_identity_conflict"] += len(group)
-    return result
+            current["record"] = source_record(current["document"], current["digest"])
+            selected.append(current)
+    return selected
 
 
 def parse_evaluated_at(value: str) -> datetime:
@@ -459,21 +509,20 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Publish FirstMate's neutral, redacted Cockpit run-evaluation snapshot."
     )
-    parser.add_argument(
-        "--source-dir",
-        type=Path,
-        help="Directory of immutable governance.run-evaluation.v1 JSON artifacts.",
-    )
     return parser.parse_args(argv)
 
 
+def environment_path(name: str, fallback: Path) -> Path:
+    return Path(os.environ.get(name) or fallback)
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    root = Path(os.environ.get("FM_ROOT_OVERRIDE", SCRIPT_DIR.parent))
-    home = Path(os.environ.get("FM_HOME", root))
-    data_dir = Path(os.environ.get("FM_DATA_OVERRIDE", home / "data"))
-    state_dir = Path(os.environ.get("FM_STATE_OVERRIDE", home / "state"))
-    source_dir = args.source_dir or data_dir / SOURCE_DIRECTORY_NAME
+    parse_args(argv)
+    root = environment_path("FM_ROOT_OVERRIDE", SCRIPT_DIR.parent)
+    home = environment_path("FM_HOME", root)
+    data_dir = environment_path("FM_DATA_OVERRIDE", home / "data")
+    state_dir = environment_path("FM_STATE_OVERRIDE", home / "state")
+    source_dir = data_dir / SOURCE_DIRECTORY_NAME
     output = state_dir / OUTPUT_NAME
     try:
         validator = load_contract_validator()

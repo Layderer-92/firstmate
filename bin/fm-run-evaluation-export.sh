@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Publish the neutral, redacted Cockpit run-evaluation snapshot.
-# Usage: fm-run-evaluation-export.sh [--source-dir <directory>]
+# Usage: fm-run-evaluation-export.sh
 #
 # The default source is $FM_HOME/data/run-evaluations and the fixed destination
 # is $FM_HOME/state/cockpit-run-evaluation.json.
-# FM_HOME, FM_ROOT_OVERRIDE, FM_DATA_OVERRIDE, FM_STATE_OVERRIDE, and
-# FM_RUN_EVALUATION_PYTHON follow the established home and test override
-# precedence.
+# FM_HOME, FM_ROOT_OVERRIDE, FM_DATA_OVERRIDE, and FM_STATE_OVERRIDE follow the
+# established home and test override precedence.
 # The command never computes scores, ranks, recommendations, or routing.
 # It validates immutable governance.run-evaluation.v1 inputs, withholds unsafe
 # records, projects only contract fields, validates the consumer document, and
@@ -14,6 +13,5 @@
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON=${FM_RUN_EVALUATION_PYTHON:-python3}
 
-exec "$PYTHON" "$SCRIPT_DIR/fm-run-evaluation-export.py" "$@"
+exec python3 "$SCRIPT_DIR/fm-run-evaluation-export.py" "$@"

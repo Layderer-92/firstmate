@@ -34,13 +34,13 @@ surface_fixture() {
 
 fresh_source_dir() {
   local name=$1
-  local directory="$TMP_ROOT/$name"
+  local directory="$TMP_ROOT/$name/data/run-evaluations"
   mkdir -p "$directory"
   printf '%s\n' "$directory"
 }
 
 run_export() {
-  "$PUBLISHER" --source-dir "$1"
+  FM_DATA_OVERRIDE=$(dirname "$1") "$PUBLISHER"
 }
 
 VALID_DIR=$(fresh_source_dir valid)
@@ -175,6 +175,18 @@ jq -e '
 assert_no_grep "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890" "$OUTPUT" "credential-shaped input leaked into the Cockpit snapshot"
 pass "credential-shaped values are withheld without being copied"
 
+PROVIDER_CREDENTIAL_DIR=$(fresh_source_dir provider-credential)
+surface_fixture "$PROVIDER_CREDENTIAL_DIR/evaluation.json"
+jq '.dimensions.reviewEffort.reasonCodes = ["ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"]' "$PROVIDER_CREDENTIAL_DIR/evaluation.json" > "$PROVIDER_CREDENTIAL_DIR/evaluation.next"
+mv "$PROVIDER_CREDENTIAL_DIR/evaluation.next" "$PROVIDER_CREDENTIAL_DIR/evaluation.json"
+run_export "$PROVIDER_CREDENTIAL_DIR" >/dev/null || fail "provider credential-shaped input should be withheld without failing publication"
+jq -e '
+  (.records | length) == 0
+  and .withheld.reasonCounts == [{code:"redaction_blocked",count:1}]
+' "$OUTPUT" >/dev/null || fail "provider credential-shaped input did not stop at the redaction boundary"
+assert_no_grep "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890" "$OUTPUT" "provider credential-shaped input leaked into the Cockpit snapshot"
+pass "standalone provider credentials are withheld before projection"
+
 PRIVATE_DIR=$(fresh_source_dir private-content)
 surface_fixture "$PRIVATE_DIR/private-path.json"
 jq '.subject.route.routeRef = "C:/Users/chris/private"' "$PRIVATE_DIR/private-path.json" > "$PRIVATE_DIR/private-path.next"
@@ -195,13 +207,21 @@ pass "private paths, prompts, transcripts, and other free text cannot enter the 
 MALFORMED_DIR=$(fresh_source_dir malformed)
 printf '{"kind":"run_evaluation","kind":"duplicate"}\n' > "$MALFORMED_DIR/duplicate.json"
 printf '{"truncated":\n' > "$MALFORMED_DIR/truncated.json"
+printf '\377\n' > "$MALFORMED_DIR/invalid-utf8.json"
+printf '{"kind":"run_evaluation","dataClass":[]}\n' > "$MALFORMED_DIR/array-class.json"
+printf '{"kind":"run_evaluation","dataClass":"unknown"}\n' > "$MALFORMED_DIR/unknown-class.json"
+printf '{"kind":"run_evaluation"}\n' > "$MALFORMED_DIR/missing-class.json"
+mkdir "$MALFORMED_DIR/not-regular.json"
 run_export "$MALFORMED_DIR" >/dev/null || fail "malformed sources should be withheld without failing publication"
 jq -e '
   (.records | length) == 0
-  and .withheld.count == 2
-  and .withheld.reasonCounts == [{code:"source_read_failed",count:2}]
-' "$OUTPUT" >/dev/null || fail "malformed or duplicate-key JSON was not withheld deterministically"
-pass "malformed UTF-8 JSON and duplicate object keys are withheld"
+  and .withheld.count == 7
+  and .withheld.reasonCounts == [
+    {code:"source_invalid",count:6},
+    {code:"source_read_failed",count:1}
+  ]
+' "$OUTPUT" >/dev/null || fail "invalid content and source read failures were not classified separately"
+pass "malformed content is isolated and distinguished from read failures"
 
 SYMLINK_SOURCE_DIR=$(fresh_source_dir linked-source)
 if ln -s "$VALID_DIR/evaluation.json" "$SYMLINK_SOURCE_DIR/evaluation.json" 2>/dev/null && [ -L "$SYMLINK_SOURCE_DIR/evaluation.json" ]; then
@@ -230,6 +250,26 @@ jq -e '
   and .withheld.reasonCounts == [{code:"revision_superseded",count:1}]
 ' "$OUTPUT" >/dev/null || fail "newest source revision did not replace its older immutable evaluation"
 pass "newest source revision wins without mutating append-only inputs"
+
+BLOCKED_REVISION_DIR=$(fresh_source_dir blocked-revision)
+surface_fixture "$BLOCKED_REVISION_DIR/revision-2.json"
+jq '(.dimensions[] | .evidenceRefs[]? | .visibility) = "home_only"' "$BLOCKED_REVISION_DIR/revision-2.json" > "$BLOCKED_REVISION_DIR/revision-2.next"
+mv "$BLOCKED_REVISION_DIR/revision-2.next" "$BLOCKED_REVISION_DIR/revision-2.json"
+jq '
+  .evaluationId = "evaluation.synthetic.blocked-revision.r1"
+  | .derivedFrom.agentRunRecord.revision = 1
+  | .freshness.sourceRevision = 1
+  | (.dimensions[] | .evidenceRefs[]? | .visibility) = "surface_labelled"
+' "$BLOCKED_REVISION_DIR/revision-2.json" > "$BLOCKED_REVISION_DIR/revision-1.json"
+run_export "$BLOCKED_REVISION_DIR" >/dev/null || fail "blocked newest revision should produce a safe empty publication"
+jq -e '
+  (.records | length) == 0
+  and .withheld.reasonCounts == [
+    {code:"redaction_blocked",count:1},
+    {code:"revision_superseded",count:1}
+  ]
+' "$OUTPUT" >/dev/null || fail "an older exportable revision replaced a newer redaction-blocked revision"
+pass "newest validated revision controls export eligibility"
 
 DUPLICATE_DIR=$(fresh_source_dir duplicate)
 surface_fixture "$DUPLICATE_DIR/one.json"
@@ -282,6 +322,24 @@ jq -e '
 ' "$OUTPUT" >/dev/null || fail "one evaluation identity was allowed to describe multiple runs"
 pass "conflicting run bindings for one evaluation identity are withheld together"
 
+CROSS_REVISION_IDENTITY_DIR=$(fresh_source_dir cross-revision-identity)
+surface_fixture "$CROSS_REVISION_IDENTITY_DIR/run-a-revision-2.json"
+jq '.evaluationId = "evaluation.synthetic.current"' "$CROSS_REVISION_IDENTITY_DIR/run-a-revision-2.json" > "$CROSS_REVISION_IDENTITY_DIR/run-a-revision-2.next"
+mv "$CROSS_REVISION_IDENTITY_DIR/run-a-revision-2.next" "$CROSS_REVISION_IDENTITY_DIR/run-a-revision-2.json"
+jq '
+  .evaluationId = "evaluation.synthetic.shared"
+  | .derivedFrom.agentRunRecord.revision = 1
+  | .freshness.sourceRevision = 1
+' "$CROSS_REVISION_IDENTITY_DIR/run-a-revision-2.json" > "$CROSS_REVISION_IDENTITY_DIR/run-a-revision-1.json"
+jq '.derivedFrom.agentRunRecord.runId = "run.synthetic.other"' "$CROSS_REVISION_IDENTITY_DIR/run-a-revision-1.json" > "$CROSS_REVISION_IDENTITY_DIR/run-b-revision-1.json"
+run_export "$CROSS_REVISION_IDENTITY_DIR" >/dev/null || fail "cross-revision identity conflict should not abort publication"
+jq -e '
+  (.records | length) == 1
+  and .records[0].sourceEvaluationId == "evaluation.synthetic.current"
+  and .withheld.reasonCounts == [{code:"evaluation_identity_conflict",count:2}]
+' "$OUTPUT" >/dev/null || fail "a superseded evaluation identity conflict crossed run boundaries"
+pass "evaluation identity conflicts are detected before revision selection"
+
 INVALID_STATE_DIR=$(fresh_source_dir invalid-state)
 surface_fixture "$INVALID_STATE_DIR/evaluation.json"
 jq '
@@ -320,7 +378,7 @@ cp "$ROOT/bin/contracts/run-evaluation-v1/validate_run_evaluation.py" "$TAMPER_C
 cp "$POLICY" "$TAMPER_CODE/contracts/run-evaluation-v1/"
 printf '\n# tampered\n' >> "$TAMPER_CODE/contracts/run-evaluation-v1/validate_run_evaluation.py"
 cp "$OUTPUT" "$STATE_DIR/pre-tamper-snapshot.json"
-if bash "$TAMPER_CODE/fm-run-evaluation-export.sh" --source-dir "$VALID_DIR" >/dev/null 2>&1; then
+if FM_DATA_OVERRIDE=$(dirname "$VALID_DIR") bash "$TAMPER_CODE/fm-run-evaluation-export.sh" >/dev/null 2>&1; then
   fail "publisher accepted a validator that did not match the pinned digest"
 fi
 cmp -s "$OUTPUT" "$STATE_DIR/pre-tamper-snapshot.json" || fail "validator-integrity refusal changed the prior snapshot"
@@ -328,7 +386,7 @@ pass "validator-integrity failure preserves the prior complete snapshot"
 
 cp "$ROOT/bin/contracts/run-evaluation-v1/validate_run_evaluation.py" "$TAMPER_CODE/contracts/run-evaluation-v1/"
 jq '.projectionOnly = false' "$POLICY" > "$TAMPER_CODE/contracts/run-evaluation-v1/cockpit-redaction-policy-v1.json"
-if bash "$TAMPER_CODE/fm-run-evaluation-export.sh" --source-dir "$VALID_DIR" >/dev/null 2>&1; then
+if FM_DATA_OVERRIDE=$(dirname "$VALID_DIR") bash "$TAMPER_CODE/fm-run-evaluation-export.sh" >/dev/null 2>&1; then
   fail "publisher accepted a weakened redaction policy"
 fi
 cmp -s "$OUTPUT" "$STATE_DIR/pre-tamper-snapshot.json" || fail "policy-integrity refusal changed the prior snapshot"
@@ -351,3 +409,33 @@ else
   mv "$STATE_DIR/prior-snapshot.json" "$OUTPUT"
   pass "destination symlink check is unavailable on this filesystem"
 fi
+
+cp "$OUTPUT" "$STATE_DIR/pre-fixed-path-snapshot.json"
+if "$PUBLISHER" --source-dir "$VALID_DIR" >/dev/null 2>&1; then
+  fail "publisher retained an arbitrary source-directory option"
+fi
+cmp -s "$OUTPUT" "$STATE_DIR/pre-fixed-path-snapshot.json" || fail "unsupported source option changed the prior snapshot"
+pass "publication accepts only the fixed home data path"
+
+MISSING_DATA_DIR="$TMP_ROOT/missing-source/data"
+cp "$OUTPUT" "$STATE_DIR/pre-missing-source-snapshot.json"
+if FM_DATA_OVERRIDE="$MISSING_DATA_DIR" "$PUBLISHER" >/dev/null 2>&1; then
+  fail "publisher replaced the prior snapshot when its fixed source directory was missing"
+fi
+cmp -s "$OUTPUT" "$STATE_DIR/pre-missing-source-snapshot.json" || fail "missing fixed source directory changed the prior snapshot"
+pass "missing fixed source directory preserves the prior snapshot"
+
+HOME_SOURCE_DIR="$DATA_DIR/run-evaluations"
+mkdir -p "$HOME_SOURCE_DIR"
+surface_fixture "$HOME_SOURCE_DIR/evaluation.json"
+EMPTY_OVERRIDE_CWD="$TMP_ROOT/empty-overrides-cwd"
+mkdir -p "$EMPTY_OVERRIDE_CWD"
+rm -f "$OUTPUT" "$EMPTY_OVERRIDE_CWD/cockpit-run-evaluation.json"
+OUT=$(
+  cd "$EMPTY_OVERRIDE_CWD" || exit 1
+  FM_ROOT_OVERRIDE= FM_DATA_OVERRIDE= FM_STATE_OVERRIDE= "$PUBLISHER"
+) || fail "empty path overrides should fall back to the effective home"
+assert_contains "$OUT" "published 1 run-evaluation record(s); withheld 0" "empty path overrides did not use the effective home"
+jq -e '(.records | length) == 1' "$OUTPUT" >/dev/null || fail "empty path overrides did not publish beneath the effective home"
+[ ! -e "$EMPTY_OVERRIDE_CWD/cockpit-run-evaluation.json" ] || fail "empty state override published into the current directory"
+pass "empty path overrides use established home fallbacks"
