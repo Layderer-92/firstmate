@@ -1,0 +1,42 @@
+RunEvaluation v1 live product transcript
+Product command: bin/fm-run-evaluation-export.sh
+
+Scenario 1 - fixed-path neutral publication
+before manual invocation: destination absent
+command output: published 1 run-evaluation record(s); withheld 0
+published path: $FM_HOME/state/cockpit-run-evaluation.json
+file mode: 600
+{"schemaVersion":"governance.cockpit-run-evaluation-export.v1","kind":"cockpit_run_evaluation_export","freshness":{"staleAfterSeconds":300},"retention":{"maxBytes":262144,"maxRecords":100,"mode":"rolling_snapshot"},"recordCount":1,"route":{"routeRef":"route.synthetic.readonly"},"comparisonIdentities":["executionHarness","fullRoute","model"],"withheld":{"count":0,"reasonCounts":[]}}
+
+Scenario 2 - redaction and malformed-input boundary
+command output: published 1 run-evaluation record(s); withheld 8
+{"recordIds":["evaluation.synthetic.001"],"withheld":{"count":8,"reasonCounts":[{"code":"classification_blocked","count":1},{"code":"redaction_blocked","count":2},{"code":"source_invalid","count":4},{"code":"source_symlink_blocked","count":1}]}}
+credential/private input present in snapshot: false
+
+Scenario 3 - current revision and cross-run identity safety
+command output: published 1 run-evaluation record(s); withheld 4
+{"recordIds":["evaluation.synthetic.current"],"withheld":{"count":4,"reasonCounts":[{"code":"evaluation_identity_conflict","count":2},{"code":"redaction_blocked","count":1},{"code":"revision_superseded","count":1}]}}
+older exportable revision resurrected after newer redaction block: false
+shared evaluation identity exported for conflicting runs: false
+
+Scenario 4 - bounded rolling publication
+command output: published 67 run-evaluation record(s); withheld 34
+{"recordCount":67,"serializedBytes":259287,"declaredLimits":{"maxBytes":262144,"maxRecords":100,"mode":"rolling_snapshot"},"withheld":{"count":34,"reasonCounts":[{"code":"byte_limit","count":33},{"code":"record_limit","count":1}]}}
+
+Scenario 5 - fixed-path and integrity failures preserve prior output
+missing fixed source exit: 1
+missing fixed source error: error: the run-evaluation source directory does not exist
+snapshot unchanged after missing source: true
+arbitrary source option exit: 2
+snapshot unchanged after arbitrary source option: true
+tampered validator exit: 1
+tampered validator error: error: the vendored governance validator does not match its pinned digest
+snapshot unchanged after validator tamper: true
+weakened policy exit: 1
+weakened policy error: error: the Cockpit redaction policy weakens the projection boundary
+snapshot unchanged after policy tamper: true
+
+Scenario 2b - production, prompt, transcript, private path, and credential coverage
+command output: published 1 run-evaluation record(s); withheld 5
+{"recordIds":["evaluation.synthetic.001"],"withheld":{"count":5,"reasonCounts":[{"code":"classification_blocked","count":1},{"code":"redaction_blocked","count":1},{"code":"source_invalid","count":3}]}}
+forbidden source material present in snapshot: false
