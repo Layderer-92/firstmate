@@ -101,7 +101,7 @@ def load_policy(validator: Any) -> tuple[dict[str, Any], str]:
     expected_origin = {
         "repository": "00_Architektur",
         "branch": "codex/run-evaluation-contract-v1",
-        "commit": "c8facfe9dfedd8d22aac6f3e7de35955502f823b",
+        "commit": "b5f4104f93d075cd9140c4dcb6cf06fbeb1501ac",
         "path": "scripts/validate_run_evaluation.py",
         "sha256": VENDORED_VALIDATOR_SHA256,
         "canonicalMainAtCopy": False,
