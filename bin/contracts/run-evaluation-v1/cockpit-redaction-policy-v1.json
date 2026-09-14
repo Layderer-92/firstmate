@@ -24,5 +24,18 @@
     "secret",
     "transcript"
   ],
+  "withheldReasonCodes": [
+    "byte_limit",
+    "classification_blocked",
+    "duplicate_source",
+    "evaluation_identity_conflict",
+    "record_limit",
+    "redaction_blocked",
+    "revision_conflict",
+    "revision_superseded",
+    "source_invalid",
+    "source_read_failed",
+    "source_symlink_blocked"
+  ],
   "projectionOnly": true
 }

@@ -86,6 +86,7 @@ def load_policy(validator: Any) -> tuple[dict[str, Any], str]:
         "allowedDataClasses",
         "allowedEvidenceVisibility",
         "prohibitedContent",
+        "withheldReasonCodes",
         "projectionOnly",
     }
     if not isinstance(policy, dict) or set(policy) != expected:
@@ -119,6 +120,20 @@ def load_policy(validator: Any) -> tuple[dict[str, Any], str]:
         "transcript",
     ]:
         raise ExportError("the Cockpit redaction policy has the wrong prohibited-content boundary")
+    if policy["withheldReasonCodes"] != [
+        "byte_limit",
+        "classification_blocked",
+        "duplicate_source",
+        "evaluation_identity_conflict",
+        "record_limit",
+        "redaction_blocked",
+        "revision_conflict",
+        "revision_superseded",
+        "source_invalid",
+        "source_read_failed",
+        "source_symlink_blocked",
+    ]:
+        raise ExportError("the Cockpit redaction policy has the wrong withheld-reason vocabulary")
     digest = validator.canonical_digest("redaction-policy.v1", policy)
     return policy, digest
 
@@ -298,6 +313,9 @@ def make_document(
     generated_at: str,
     validator: Any,
 ) -> dict[str, Any]:
+    unknown_reasons = set(withheld) - set(policy["withheldReasonCodes"])
+    if unknown_reasons:
+        raise ExportError("the exporter produced a withheld reason outside its pinned policy")
     return {
         "schemaVersion": validator.EXPORT_SCHEMA_VERSION,
         "kind": validator.EXPORT_KIND,

@@ -104,7 +104,7 @@ Only `synthetic`, `public`, and `internal_non_sensitive` records whose evidence 
 Invalid, underclassified, sensitive, productive, non-surface, credential-shaped, or conflicting inputs are counted as withheld without copying their content into the consumer document.
 The rolling snapshot keeps the newest immutable revision per run and then retains the newest evaluations first when its 100-record or 262,144-byte limit truncates the candidate set.
 That recency policy is deterministic transport retention, not a quality rank, but consumers must treat a truncated snapshot as a recent sample rather than a complete comparison population.
-The withheld summary reports `record_limit` and `byte_limit` alongside validation, classification, redaction, duplicate, revision, and identity conflicts without carrying rejected content.
+The withheld summary reports `record_limit` and `byte_limit` alongside validation, classification, redaction, duplicate, revision, and identity conflicts without carrying rejected content; the digest-bound redaction policy owns that complete reason-code vocabulary.
 The snapshot declares a 300-second consumer freshness window and replaces the previous complete file atomically.
 The pinned governance commit is still on `codex/run-evaluation-contract-v1` rather than architecture `main`, so this adapter must not be integrated or published before that owner contract becomes canonical.
 No watcher, daemon, spawn path, teardown path, or routing path invokes this adapter.

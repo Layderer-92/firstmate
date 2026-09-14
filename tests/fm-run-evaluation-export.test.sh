@@ -102,6 +102,19 @@ jq -e '
   }
   and .allowedDataClasses == ["synthetic","public","internal_non_sensitive"]
   and .allowedEvidenceVisibility == "surface_labelled"
+  and .withheldReasonCodes == [
+    "byte_limit",
+    "classification_blocked",
+    "duplicate_source",
+    "evaluation_identity_conflict",
+    "record_limit",
+    "redaction_blocked",
+    "revision_conflict",
+    "revision_superseded",
+    "source_invalid",
+    "source_read_failed",
+    "source_symlink_blocked"
+  ]
   and .projectionOnly == true
 ' "$POLICY" >/dev/null || fail "redaction policy drifted from the accepted consumer boundary"
 [ ! -e "$ROOT/bin/contracts/run-evaluation-v1/__pycache__" ] || fail "loading the vendored validator wrote bytecode into the tracked code root"
