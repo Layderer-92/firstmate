@@ -22,7 +22,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 CONTRACT_DIR = SCRIPT_DIR / "contracts" / "run-evaluation-v1"
 VALIDATOR_PATH = CONTRACT_DIR / "validate_run_evaluation.py"
 POLICY_PATH = CONTRACT_DIR / "cockpit-redaction-policy-v1.json"
-VENDORED_VALIDATOR_SHA256 = "e6a89e9d76678762699a887aac5a6db2536da0f435818d26485178276e1d702d"
+VENDORED_VALIDATOR_SHA256 = "5f9ef989ed02260ff61328c7ca91f84529ab1a61f28abd01ba162780b6bbefc7"
 PRODUCER_ADAPTER = "firstmate-run-evaluation-export"
 PRODUCER_ADAPTER_VERSION = "1"
 OUTPUT_NAME = "cockpit-run-evaluation.json"
@@ -100,7 +100,7 @@ def load_policy(validator: Any) -> tuple[dict[str, Any], str]:
     expected_origin = {
         "repository": "00_Architektur",
         "branch": "codex/run-evaluation-contract-v1",
-        "commit": "76a7eb2eb373fc6f053379ee6844c18ea3954c49",
+        "commit": "c8facfe9dfedd8d22aac6f3e7de35955502f823b",
         "path": "scripts/validate_run_evaluation.py",
         "sha256": VENDORED_VALIDATOR_SHA256,
         "canonicalMainAtCopy": False,
@@ -129,7 +129,7 @@ def primary_validation_reason(findings: list[dict[str, str]]) -> str:
         return "redaction_blocked"
     if codes & {
         "evaluation_data_class_too_low",
-        "evidence_data_class_too_high",
+        "evidence_class_exceeds_evaluation",
         "data_class_invalid",
     }:
         return "classification_blocked"

@@ -198,6 +198,15 @@ def reject_nonstandard_number(value: str) -> None:
     raise ValueError(f"Nichtstandardisierte Zahl {value}")
 
 
+def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"Doppelter Objektschlüssel {key}")
+        result[key] = value
+    return result
+
+
 def expected_profile_digest(profile: dict[str, Any]) -> str:
     return canonical_digest(
         "scoring-profile.v1",
@@ -961,7 +970,11 @@ def validate_path(path: Path) -> list[dict[str, str]]:
     except OSError as exc:
         return [finding("source_read_failed", "", f"Datei konnte nicht gelesen werden: {exc}")]
     try:
-        document = json.loads(raw.decode("utf-8"), parse_constant=reject_nonstandard_number)
+        document = json.loads(
+            raw.decode("utf-8"),
+            object_pairs_hook=reject_duplicate_keys,
+            parse_constant=reject_nonstandard_number,
+        )
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         return [finding("source_invalid", "", f"Datei ist kein gültiges UTF-8-JSON: {exc}")]
     return validate_document(document, source_bytes=len(raw))

@@ -96,7 +96,7 @@
       "normalized": 0.85,
       "uncertainty": {"value": 0.0, "quality": "exact"},
       "basisRefs": ["evaluation.primary-measurement"],
-      "evidenceRefs": [{"ref": "metrics/quality.json", "kind": "metric", "dataClass": "synthetic", "visibility": "home_only"}],
+      "evidenceRefs": [{"ref": "metrics/quality.json", "kind": "metric", "dataClass": "synthetic", "visibility": "surface_labelled"}],
       "reasonCodes": []
     },
     "reliability": {
@@ -105,7 +105,7 @@
       "normalized": 1.0,
       "uncertainty": {"value": 0.0, "quality": "exact"},
       "basisRefs": ["agent-run.result.status"],
-      "evidenceRefs": [{"ref": "metrics/result.json", "kind": "metric", "dataClass": "synthetic", "visibility": "home_only"}],
+      "evidenceRefs": [{"ref": "metrics/result.json", "kind": "metric", "dataClass": "synthetic", "visibility": "surface_labelled"}],
       "reasonCodes": []
     },
     "cost": {
@@ -114,7 +114,7 @@
       "normalized": 0.9,
       "uncertainty": {"value": 0.2, "quality": "estimated"},
       "basisRefs": ["agent-run.cost.amount-usd"],
-      "evidenceRefs": [{"ref": "metrics/cost.json", "kind": "metric", "dataClass": "synthetic", "visibility": "home_only"}],
+      "evidenceRefs": [{"ref": "metrics/cost.json", "kind": "metric", "dataClass": "synthetic", "visibility": "surface_labelled"}],
       "reasonCodes": ["price_table_estimate"]
     },
     "duration": {
@@ -123,7 +123,7 @@
       "normalized": 0.8,
       "uncertainty": {"value": 0.0, "quality": "exact"},
       "basisRefs": ["agent-run.timing.duration-ms"],
-      "evidenceRefs": [{"ref": "metrics/duration.json", "kind": "metric", "dataClass": "synthetic", "visibility": "home_only"}],
+      "evidenceRefs": [{"ref": "metrics/duration.json", "kind": "metric", "dataClass": "synthetic", "visibility": "surface_labelled"}],
       "reasonCodes": []
     },
     "reviewEffort": {
@@ -141,7 +141,7 @@
       "normalized": 1.0,
       "uncertainty": {"value": 0.0, "quality": "exact"},
       "basisRefs": ["evaluation.policy-findings"],
-      "evidenceRefs": [{"ref": "metrics/policy-findings.json", "kind": "metric", "dataClass": "synthetic", "visibility": "home_only"}],
+      "evidenceRefs": [{"ref": "metrics/policy-findings.json", "kind": "metric", "dataClass": "synthetic", "visibility": "surface_labelled"}],
       "reasonCodes": []
     }
   },

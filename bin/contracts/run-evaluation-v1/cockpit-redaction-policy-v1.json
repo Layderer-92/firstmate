@@ -6,9 +6,9 @@
   "validatorOrigin": {
     "repository": "00_Architektur",
     "branch": "codex/run-evaluation-contract-v1",
-    "commit": "76a7eb2eb373fc6f053379ee6844c18ea3954c49",
+    "commit": "c8facfe9dfedd8d22aac6f3e7de35955502f823b",
     "path": "scripts/validate_run_evaluation.py",
-    "sha256": "e6a89e9d76678762699a887aac5a6db2536da0f435818d26485178276e1d702d",
+    "sha256": "5f9ef989ed02260ff61328c7ca91f84529ab1a61f28abd01ba162780b6bbefc7",
     "canonicalMainAtCopy": false
   },
   "allowedDataClasses": [

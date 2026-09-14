@@ -12,7 +12,7 @@ DATA_DIR="$HOME_DIR/data"
 FIXTURE="$ROOT/tests/fixtures/run-evaluation-v1/valid-partial-evaluation.json"
 PUBLISHER="$ROOT/bin/fm-run-evaluation-export.sh"
 OUTPUT="$STATE_DIR/cockpit-run-evaluation.json"
-EXPECTED_VALIDATOR_SHA256=e6a89e9d76678762699a887aac5a6db2536da0f435818d26485178276e1d702d
+EXPECTED_VALIDATOR_SHA256=5f9ef989ed02260ff61328c7ca91f84529ab1a61f28abd01ba162780b6bbefc7
 POLICY="$ROOT/bin/contracts/run-evaluation-v1/cockpit-redaction-policy-v1.json"
 
 export FM_HOME="$HOME_DIR"
@@ -29,7 +29,7 @@ sha256_file() {
 }
 
 surface_fixture() {
-  jq '(.dimensions[] | .evidenceRefs[]? | .visibility) = "surface_labelled"' "$FIXTURE" > "$1"
+  cp "$FIXTURE" "$1"
 }
 
 fresh_source_dir() {
@@ -95,9 +95,9 @@ jq -e '
   and .validatorOrigin == {
     repository:"00_Architektur",
     branch:"codex/run-evaluation-contract-v1",
-    commit:"76a7eb2eb373fc6f053379ee6844c18ea3954c49",
+    commit:"c8facfe9dfedd8d22aac6f3e7de35955502f823b",
     path:"scripts/validate_run_evaluation.py",
-    sha256:"e6a89e9d76678762699a887aac5a6db2536da0f435818d26485178276e1d702d",
+    sha256:"5f9ef989ed02260ff61328c7ca91f84529ab1a61f28abd01ba162780b6bbefc7",
     canonicalMainAtCopy:false
   }
   and .allowedDataClasses == ["synthetic","public","internal_non_sensitive"]
@@ -108,7 +108,7 @@ jq -e '
 pass "consumer validation remains byte-bound to the accepted governance validator"
 
 HOME_ONLY_DIR=$(fresh_source_dir home-only)
-cp "$FIXTURE" "$HOME_ONLY_DIR/evaluation.json"
+jq '(.dimensions[] | .evidenceRefs[]? | .visibility) = "home_only"' "$FIXTURE" > "$HOME_ONLY_DIR/evaluation.json"
 run_export "$HOME_ONLY_DIR" >/dev/null || fail "home-only evidence should be withheld without failing publication"
 jq -e '
   (.records | length) == 0
@@ -138,6 +138,17 @@ jq -e '
   and .withheld.reasonCounts == [{code:"classification_blocked",count:1}]
 ' "$OUTPUT" >/dev/null || fail "underclassified input did not report its safety reason"
 pass "underclassified evaluation input is withheld"
+
+EVIDENCE_CLASS_DIR=$(fresh_source_dir evidence-class)
+surface_fixture "$EVIDENCE_CLASS_DIR/evaluation.json"
+jq '.dimensions.quality.evidenceRefs[0].dataClass = "sensitive"' "$EVIDENCE_CLASS_DIR/evaluation.json" > "$EVIDENCE_CLASS_DIR/evaluation.next"
+mv "$EVIDENCE_CLASS_DIR/evaluation.next" "$EVIDENCE_CLASS_DIR/evaluation.json"
+run_export "$EVIDENCE_CLASS_DIR" >/dev/null || fail "overclassified evidence should be withheld without failing publication"
+jq -e '
+  (.records | length) == 0
+  and .withheld.reasonCounts == [{code:"classification_blocked",count:1}]
+' "$OUTPUT" >/dev/null || fail "overclassified evidence did not report its classification reason"
+pass "evidence above the evaluation class is reported as a classification block"
 
 CREDENTIAL_DIR=$(fresh_source_dir credential)
 surface_fixture "$CREDENTIAL_DIR/evaluation.json"
