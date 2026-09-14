@@ -2,7 +2,7 @@
 # Publish the neutral, redacted Cockpit run-evaluation snapshot.
 # Usage: fm-run-evaluation-export.sh
 #
-# The default source is $FM_HOME/data/run-evaluations and the fixed destination
+# The fixed source is $FM_HOME/data/run-evaluations and the fixed destination
 # is $FM_HOME/state/cockpit-run-evaluation.json.
 # FM_HOME, FM_ROOT_OVERRIDE, FM_DATA_OVERRIDE, and FM_STATE_OVERRIDE follow the
 # established home and test override precedence.
