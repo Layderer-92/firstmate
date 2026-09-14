@@ -433,7 +433,7 @@ mkdir -p "$EMPTY_OVERRIDE_CWD"
 rm -f "$OUTPUT" "$EMPTY_OVERRIDE_CWD/cockpit-run-evaluation.json"
 OUT=$(
   cd "$EMPTY_OVERRIDE_CWD" || exit 1
-  FM_ROOT_OVERRIDE= FM_DATA_OVERRIDE= FM_STATE_OVERRIDE= "$PUBLISHER"
+  FM_ROOT_OVERRIDE='' FM_DATA_OVERRIDE='' FM_STATE_OVERRIDE='' "$PUBLISHER"
 ) || fail "empty path overrides should fall back to the effective home"
 assert_contains "$OUT" "published 1 run-evaluation record(s); withheld 0" "empty path overrides did not use the effective home"
 jq -e '(.records | length) == 1' "$OUTPUT" >/dev/null || fail "empty path overrides did not publish beneath the effective home"
