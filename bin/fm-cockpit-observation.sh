@@ -68,6 +68,7 @@ public_document_valid() {  # <path>
     and .observed_epoch >= 0
     and (.observed_epoch | floor) == .observed_epoch
     and (.observed_at | fromdateiso8601) == .observed_epoch
+    and (.observed_at as $timestamp | ($timestamp | fromdateiso8601 | todateiso8601) == $timestamp)
     and (.state == "unknown" or .state == "captain_decision"
       or .state == "active_child_work" or .state == "externally_held"
       or .state == "no_active_work")
@@ -95,6 +96,7 @@ project_summary() {  # <private-summary-path>
     and .generated_epoch >= 0
     and (.generated_epoch | floor) == .generated_epoch
     and (.generated | fromdateiso8601) == .generated_epoch
+    and (.generated as $timestamp | ($timestamp | fromdateiso8601 | todateiso8601) == $timestamp)
     and (.valid | type) == "boolean"
     and (.state == "unknown" or .state == "captain_decision"
       or .state == "active_child_work" or .state == "externally_held"

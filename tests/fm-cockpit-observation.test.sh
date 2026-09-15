@@ -115,6 +115,20 @@ if FM_HOME="$HOME_DIR" "$EXPORTER" --json >/dev/null 2>&1; then
 fi
 pass "timestamp and epoch must describe the same observation"
 
+IMPOSSIBLE_SUMMARY="$TMP_ROOT/impossible-summary.json"
+jq '.generated = "2026-02-30T00:00:00Z" | .generated_epoch = 1772409600' \
+  "$SUMMARY" > "$IMPOSSIBLE_SUMMARY"
+if "$EXPORTER" --project-summary "$IMPOSSIBLE_SUMMARY" >/dev/null 2>&1; then
+  fail "non-canonical private timestamp was accepted despite matching normalized epoch"
+fi
+printf '%s' "$PUBLIC_JSON" | jq '
+  .observed_at = "2026-02-30T00:00:00Z" | .observed_epoch = 1772409600
+' > "$HOME_DIR/state/cockpit-observation.json"
+if FM_HOME="$HOME_DIR" "$EXPORTER" --json >/dev/null 2>&1; then
+  fail "non-canonical public timestamp was accepted despite matching normalized epoch"
+fi
+pass "impossible calendar dates are rejected on projection and read-back"
+
 PRIOR_PUBLIC="$TMP_ROOT/prior-public.json"
 printf '%s\n' "$PUBLIC_JSON" > "$PRIOR_PUBLIC"
 printf '{"schema":"wrong"}\n' > "$HOME_DIR/state/cockpit-observation.json"
