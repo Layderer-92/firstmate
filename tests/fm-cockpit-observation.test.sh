@@ -8,6 +8,8 @@ set -u
 
 EXPORTER="$ROOT/bin/fm-cockpit-observation.sh"
 WRITER="$ROOT/bin/fm-home-summary-refresh.sh"
+SCHEMA="$ROOT/contracts/fm-cockpit-observation-v1.schema.json"
+CORPUS="$ROOT/tests/assets/fm-cockpit-observation-v1.conformance.json"
 TMP_ROOT=$(fm_test_tmproot fm-cockpit-observation)
 HOME_DIR="$TMP_ROOT/home"
 FAKEBIN=$(fm_fakebin "$TMP_ROOT")
@@ -30,6 +32,279 @@ fail() {
 pass() {
   echo "ok - $*"
 }
+
+CONFORMANCE_CLASSES="valid timestamp_epoch_identity canonical_timestamp validity_coupling exact_keys enums counts source_clock_ahead"
+if [ ! -f "$SCHEMA" ] || [ ! -f "$CORPUS" ]; then
+  for vector_class in $CONFORMANCE_CLASSES; do
+    printf 'not ok - conformance %s: canonical schema and corpus are required\n' \
+      "$vector_class" >&2
+  done
+  exit 1
+fi
+command -v python3 >/dev/null 2>&1 || fail "python3 is required for schema conformance"
+
+python3 - "$SCHEMA" "$CORPUS" "$EXPORTER" "$TMP_ROOT/conformance" <<'PY' \
+  || fail "schema and semantic conformance corpus"
+import copy
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+schema_path, corpus_path, exporter_path, fixture_root = sys.argv[1:]
+schema = json.loads(Path(schema_path).read_text(encoding="utf-8"))
+corpus = json.loads(Path(corpus_path).read_text(encoding="utf-8"))
+required_classes = {
+    "valid",
+    "timestamp_epoch_identity",
+    "canonical_timestamp",
+    "validity_coupling",
+    "exact_keys",
+    "enums",
+    "counts",
+    "source_clock_ahead",
+}
+
+
+def json_equal(left, right):
+    return type(left) is type(right) and left == right
+
+
+def resolve_ref(root, ref):
+    if not ref.startswith("#/"):
+        raise ValueError(f"unsupported non-local schema reference: {ref}")
+    value = root
+    for raw_part in ref[2:].split("/"):
+        part = raw_part.replace("~1", "/").replace("~0", "~")
+        value = value[part]
+    return value
+
+
+def type_matches(name, value):
+    if name == "object":
+        return isinstance(value, dict)
+    if name == "string":
+        return isinstance(value, str)
+    if name == "integer":
+        return (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and float(value).is_integer()
+        )
+    if name == "boolean":
+        return isinstance(value, bool)
+    if name == "null":
+        return value is None
+    raise ValueError(f"unsupported schema type: {name}")
+
+
+def validate(node_schema, value, root, path="$"):
+    errors = []
+    if "$ref" in node_schema:
+        errors.extend(validate(resolve_ref(root, node_schema["$ref"]), value, root, path))
+    expected_type = node_schema.get("type")
+    if expected_type is not None and not type_matches(expected_type, value):
+        return [f"{path}: expected {expected_type}"]
+    if "const" in node_schema and not json_equal(value, node_schema["const"]):
+        errors.append(f"{path}: const mismatch")
+    if "enum" in node_schema and not any(json_equal(value, item) for item in node_schema["enum"]):
+        errors.append(f"{path}: enum mismatch")
+    if isinstance(value, str) and "pattern" in node_schema:
+        if re.search(node_schema["pattern"], value) is None:
+            errors.append(f"{path}: pattern mismatch")
+    if (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and "minimum" in node_schema
+    ):
+        if value < node_schema["minimum"]:
+            errors.append(f"{path}: below minimum")
+    if isinstance(value, dict):
+        for key in node_schema.get("required", []):
+            if key not in value:
+                errors.append(f"{path}: missing {key}")
+        properties = node_schema.get("properties", {})
+        if node_schema.get("additionalProperties") is False:
+            for key in value:
+                if key not in properties:
+                    errors.append(f"{path}: unknown {key}")
+        for key, child_schema in properties.items():
+            if key in value:
+                errors.extend(validate(child_schema, value[key], root, f"{path}.{key}"))
+    if "oneOf" in node_schema:
+        matches = sum(not validate(branch, value, root, path) for branch in node_schema["oneOf"])
+        if matches != 1:
+            errors.append(f"{path}: expected exactly one oneOf match, got {matches}")
+    return errors
+
+
+failures = []
+if schema.get("$schema") != "https://json-schema.org/draft/2020-12/schema":
+    failures.append("schema: Draft 2020-12 declaration is missing")
+if corpus.get("schema") != "fm-cockpit-observation-conformance.v1":
+    failures.append("corpus: wrong corpus schema")
+if corpus.get("contract") != schema.get("properties", {}).get("schema", {}).get("const"):
+    failures.append("corpus: contract does not match the canonical schema constant")
+consumer_semantics = schema.get("x-firstmate-consumer-semantics", {})
+structural_invalidity = consumer_semantics.get("structuralInvalidity", {})
+future_timestamp = consumer_semantics.get("futureTimestamp", {})
+if consumer_semantics.get("freshnessThresholdMilliseconds") != 10000:
+    failures.append("schema: fixed freshness threshold must be 10000 milliseconds")
+if structural_invalidity.get("verdict") != "source_invalid":
+    failures.append("schema: structural invalidity verdict must be source_invalid")
+if structural_invalidity.get("precedes") != "futureTimestamp":
+    failures.append("schema: structural validation must precede future timestamp classification")
+if "observation" not in structural_invalidity or structural_invalidity.get("observation") is not None:
+    failures.append("schema: structural invalidity must carry no observation payload")
+if future_timestamp.get("comparison") != "observed_epoch*1000 > consumer_now_ms":
+    failures.append("schema: future timestamp comparison is missing")
+if future_timestamp.get("toleranceMilliseconds") != 0:
+    failures.append("schema: future timestamp tolerance must be zero milliseconds")
+if future_timestamp.get("structuralValidationRequired") is not True:
+    failures.append("schema: future timestamp classification must require structural validity")
+if future_timestamp.get("verdict") != "source_clock_ahead":
+    failures.append("schema: future timestamp verdict must be source_clock_ahead")
+if "observation" not in future_timestamp or future_timestamp.get("observation") is not None:
+    failures.append("schema: future timestamp verdict must carry no observation payload")
+vectors = corpus.get("vectors")
+if not isinstance(vectors, list):
+    failures.append("corpus: vectors must be an array")
+    vectors = []
+
+seen_ids = set()
+seen_classes = set()
+counts = {}
+source_clock_ahead_ids = set()
+fixture_base = Path(fixture_root)
+
+
+def contract_accepts(vector_id, document):
+    home = fixture_base / vector_id
+    state = home / "state"
+    state.mkdir(parents=True, exist_ok=True)
+    (state / "cockpit-observation.json").write_text(
+        json.dumps(document, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    environment = os.environ.copy()
+    environment["FM_HOME"] = str(home)
+    result = subprocess.run(
+        [exporter_path, "--json"],
+        env=environment,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    return result.returncode == 0, result.stderr.strip() or "accepted"
+
+
+for vector in vectors:
+    vector_id = vector.get("id")
+    vector_class = vector.get("class")
+    if not isinstance(vector_id, str) or not vector_id:
+        failures.append("corpus: vector id must be a non-empty string")
+        continue
+    if vector_id in seen_ids:
+        failures.append(f"corpus: duplicate vector id {vector_id}")
+        continue
+    seen_ids.add(vector_id)
+    seen_classes.add(vector_class)
+    counts[vector_class] = counts.get(vector_class, 0) + 1
+    document = vector.get("document")
+    schema_actual = not validate(schema, document, schema)
+    if schema_actual is not vector.get("schema_valid"):
+        failures.append(
+            f"{vector_id}: schema expected {vector.get('schema_valid')} got {schema_actual}"
+        )
+
+    contract_actual, detail = contract_accepts(vector_id, document)
+    if contract_actual is not vector.get("contract_valid"):
+        failures.append(
+            f"{vector_id}: contract expected {vector.get('contract_valid')} "
+            f"got {contract_actual} ({detail})"
+        )
+    if vector_class == "source_clock_ahead":
+        source_clock_ahead_ids.add(vector_id)
+        consumer_now_ms = vector.get("consumer_now_ms")
+        if not isinstance(consumer_now_ms, int):
+            failures.append(f"{vector_id}: integer consumer_now_ms is required")
+        elif document.get("observed_epoch", -1) * 1000 <= consumer_now_ms:
+            failures.append(f"{vector_id}: vector timestamp is not in the future")
+        expected_verdict = (
+            future_timestamp.get("verdict")
+            if schema_actual
+            else structural_invalidity.get("verdict")
+        )
+        if vector.get("expected_source_verdict") != expected_verdict:
+            failures.append(f"{vector_id}: expected verdict does not match schema ordering")
+        if "expected_observation" not in vector or vector.get("expected_observation") is not None:
+            failures.append(f"{vector_id}: expected observation payload must be null")
+
+valid_document = next(
+    (copy.deepcopy(vector["document"]) for vector in vectors if vector.get("id") == "valid-complete"),
+    None,
+)
+if valid_document is None:
+    failures.append("corpus: valid-complete vector is required for enum expansion")
+else:
+    for state_value in schema.get("properties", {}).get("state", {}).get("enum", []):
+        document = copy.deepcopy(valid_document)
+        document["state"] = state_value
+        vector_id = f"allowed-state-{state_value}"
+        if validate(schema, document, schema):
+            failures.append(f"{vector_id}: canonical schema rejected its own state enum")
+        contract_actual, detail = contract_accepts(vector_id, document)
+        if not contract_actual:
+            failures.append(f"{vector_id}: contract rejected allowed state ({detail})")
+        counts["enums"] = counts.get("enums", 0) + 1
+    for invalidity_value in schema.get("$defs", {}).get("invalidity", {}).get("enum", []):
+        document = copy.deepcopy(valid_document)
+        document["state"] = "unknown"
+        document["valid"] = False
+        document["invalidity"] = invalidity_value
+        vector_id = f"allowed-invalidity-{invalidity_value}"
+        if validate(schema, document, schema):
+            failures.append(f"{vector_id}: canonical schema rejected its own invalidity enum")
+        contract_actual, detail = contract_accepts(vector_id, document)
+        if not contract_actual:
+            failures.append(f"{vector_id}: contract rejected allowed invalidity ({detail})")
+        counts["enums"] = counts.get("enums", 0) + 1
+
+missing_classes = sorted(required_classes - seen_classes)
+if missing_classes:
+    failures.append(f"corpus: missing classes {', '.join(missing_classes)}")
+required_source_clock_ahead_ids = {
+    "future-structurally-valid",
+    "future-structurally-invalid",
+}
+missing_source_clock_ahead_ids = sorted(
+    required_source_clock_ahead_ids - source_clock_ahead_ids
+)
+if missing_source_clock_ahead_ids:
+    failures.append(
+        "corpus: missing source_clock_ahead vectors "
+        + ", ".join(missing_source_clock_ahead_ids)
+    )
+unknown_classes = sorted(seen_classes - required_classes)
+if unknown_classes:
+    failures.append(f"corpus: unknown classes {', '.join(unknown_classes)}")
+if failures:
+    for failure in failures:
+        print(f"not ok - {failure}", file=sys.stderr)
+    raise SystemExit(1)
+for vector_class in sorted(required_classes):
+    count = counts[vector_class]
+    noun = "vector" if count == 1 else "vectors"
+    print(f"ok - conformance {vector_class}: {count} {noun}")
+PY
+
+if [ "${FM_COCKPIT_OBSERVATION_CONFORMANCE_ONLY:-0}" = 1 ]; then
+  echo "all cockpit observation conformance tests passed"
+  exit 0
+fi
 
 file_mode() {
   stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"
