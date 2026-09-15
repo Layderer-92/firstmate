@@ -162,6 +162,36 @@ FM_HOME="$HOME_DIR" "$EXPORTER" --json | jq -e '
 [ ! -s "$CALL_LOG" ] || fail "integrated publication executed an external command: $(cat "$CALL_LOG")"
 pass "home-summary refresh atomically publishes the redacted public observation"
 
+PUBLIC_BEFORE_UNSAFE_TARGET="$TMP_ROOT/public-before-unsafe-target.json"
+cp -p "$HOME_DIR/state/cockpit-observation.json" "$PUBLIC_BEFORE_UNSAFE_TARGET" \
+  || fail "could not preserve the fixture public observation"
+rm -f "$HOME_DIR/state/cockpit-observation.json"
+mkdir "$HOME_DIR/state/cockpit-observation.json"
+if PATH="$FAKEBIN:$PATH" FM_TEST_EXTERNAL_CALL_LOG="$CALL_LOG" \
+  FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$HOME_DIR" \
+  FM_SNAPSHOT_NOW="2026-09-04T20:07:00Z" FM_SNAPSHOT_NOW_EPOCH=1788552420 \
+  "$WRITER" >/dev/null 2>&1; then
+  fail "directory at the fixed public export path was reported as success"
+fi
+if find "$HOME_DIR/state/cockpit-observation.json" -mindepth 1 -print -quit | grep -q .; then
+  fail "publisher moved the staged observation into the unsafe directory"
+fi
+rmdir "$HOME_DIR/state/cockpit-observation.json" \
+  || fail "unsafe fixture directory was not empty"
+ln -s "$PUBLIC_BEFORE_UNSAFE_TARGET" "$HOME_DIR/state/cockpit-observation.json"
+if PATH="$FAKEBIN:$PATH" FM_TEST_EXTERNAL_CALL_LOG="$CALL_LOG" \
+  FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$HOME_DIR" \
+  FM_SNAPSHOT_NOW="2026-09-04T20:08:00Z" FM_SNAPSHOT_NOW_EPOCH=1788552480 \
+  "$WRITER" >/dev/null 2>&1; then
+  fail "symlink at the fixed public export path was reported as success"
+fi
+[ -L "$HOME_DIR/state/cockpit-observation.json" ] \
+  || fail "publisher replaced the unsafe symlink target"
+rm -f "$HOME_DIR/state/cockpit-observation.json"
+cp -p "$PUBLIC_BEFORE_UNSAFE_TARGET" "$HOME_DIR/state/cockpit-observation.json" \
+  || fail "could not restore the fixture public observation"
+pass "writer rejects directory and symlink export targets without moving into them"
+
 PUBLIC_BEFORE_FAILURE=$(cksum "$HOME_DIR/state/cockpit-observation.json")
 if PATH="$FAKEBIN:$PATH" FM_TEST_EXTERNAL_CALL_LOG="$CALL_LOG" \
   FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$HOME_DIR" \

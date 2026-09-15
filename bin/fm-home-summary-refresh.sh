@@ -187,6 +187,12 @@ home_summary_refresh_once() {
     return 1
   fi
   HOME_SUMMARY_TMP=
+  if [ -e "$COCKPIT_LEDGER" ] || [ -L "$COCKPIT_LEDGER" ]; then
+    if [ ! -f "$COCKPIT_LEDGER" ] || [ -L "$COCKPIT_LEDGER" ]; then
+      home_summary_fail "private summary published, but Cockpit export target is unsafe"
+      return 1
+    fi
+  fi
   COCKPIT_OBSERVATION_TMP=$(umask 077; mktemp "$STATE/.cockpit-observation.json.XXXXXX") || {
     home_summary_fail "private summary published, but Cockpit publication staging failed"
     return 1
