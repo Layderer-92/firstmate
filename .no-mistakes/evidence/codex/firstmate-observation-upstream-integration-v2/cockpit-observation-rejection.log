@@ -1,0 +1,15 @@
+SCENARIO: reject a multi-document public file carrying private data
+reader_rc=1
+stdout_bytes=0
+stderr=fm-cockpit-observation: public observation is malformed
+private_data_emitted=0
+
+SCENARIO: reject ambiguous private validity input
+projection_rc=1
+stdout_bytes=0
+stderr=fm-cockpit-observation: private summary is malformed
+
+SCENARIO: reject a symlinked observation path
+reader_rc=1
+stdout_bytes=0
+stderr=fm-cockpit-observation: public observation is missing, unsafe, or oversized

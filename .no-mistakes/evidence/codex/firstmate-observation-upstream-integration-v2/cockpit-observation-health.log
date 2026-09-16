@@ -1,0 +1,7 @@
+SCENARIO: surface repeated Cockpit publication failure
+last_successful_observation_epoch=1788552300
+best_effort_refresh_rcs=0,0
+private_summary_epoch_after_failures=1788552540
+observation_target_kind=directory
+recorded_failures=2
+startup_diagnostic=HOME_SUMMARY: this home has never published state/cockpit-observation.json; 2 failed attempt(s) recorded in state/.home-summary-refresh.log, last: private summary published, but Cockpit export target is unsafe

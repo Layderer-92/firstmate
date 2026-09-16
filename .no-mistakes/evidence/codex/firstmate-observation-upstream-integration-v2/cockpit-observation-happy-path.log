@@ -1,0 +1,13 @@
+SCENARIO: project a private operational summary
+projection_rc=0
+projected_observation={"schema":"fm-cockpit-observation.v1","data_class":"internal_non_sensitive","observed_at":"2026-09-04T20:00:00Z","observed_epoch":1788552000,"state":"active_child_work","valid":true,"invalidity":null,"counts":{"active_children":1,"decisions_open":1,"holds":1,"queued":1,"landed":1,"endpoints":1}}
+projected_keys=counts,data_class,invalidity,observed_at,observed_epoch,schema,state,valid
+private_canary_or_home_occurrences=0
+provider_or_runtime_calls=0
+
+SCENARIO: publish and read from an isolated live home
+refresh_rc=0
+observation_mode=600
+reader_rc=0
+reader_output={"schema":"fm-cockpit-observation.v1","data_class":"internal_non_sensitive","observed_at":"2026-09-04T20:05:00Z","observed_epoch":1788552300,"state":"no_active_work","valid":true,"invalidity":null,"counts":{"active_children":0,"decisions_open":0,"holds":0,"queued":0,"landed":0,"endpoints":0}}
+provider_or_runtime_calls=0

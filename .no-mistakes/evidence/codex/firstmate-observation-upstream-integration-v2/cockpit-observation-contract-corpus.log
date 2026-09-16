@@ -1,0 +1,23 @@
+schema_dialect=https://json-schema.org/draft/2020-12/schema
+vector	class	schema_expected/actual	runtime_expected/actual
+valid-complete	valid	true/true	true/true
+valid-partial	valid	true/true	true/true
+timestamp-epoch-mismatch	timestamp_epoch_identity	true/true	false/false
+future-structurally-valid	source_clock_ahead	true/true	true/true
+future-structurally-invalid	source_clock_ahead	false/false	false/false
+timestamp-impossible-calendar-date	canonical_timestamp	true/true	false/false
+timestamp-offset-form	canonical_timestamp	false/false	false/false
+timestamp-subsecond-form	canonical_timestamp	false/false	false/false
+valid-true-with-invalidity	validity_coupling	false/false	false/false
+valid-false-with-null-invalidity	validity_coupling	false/false	false/false
+root-unknown-field	exact_keys	false/false	false/false
+root-missing-field	exact_keys	false/false	false/false
+counts-unknown-field	exact_keys	false/false	false/false
+counts-missing-field	exact_keys	false/false	false/false
+schema-wrong-constant	enums	false/false	false/false
+data-class-wrong-constant	enums	false/false	false/false
+state-unknown-enum	enums	false/false	false/false
+invalidity-unknown-enum	enums	false/false	false/false
+count-negative	counts	false/false	false/false
+count-fractional	counts	false/false	false/false
+mismatches=0
