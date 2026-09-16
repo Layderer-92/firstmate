@@ -26,6 +26,17 @@ Wake, watcher, away-mode, and Relay-specific state mechanics remain with their n
 `AGENTS.md` retains the run-once and read-once operator rules, lock-refusal safety, installation consent, and direct-report recovery boundaries because those facts apply at every session start.
 Ordinary dead-direct-report recovery is owned by `stuck-crewmate-recovery`, while persistent-secondmate recovery is owned by `secondmate-provisioning`.
 
+## Cockpit observation (config/cockpit-observation)
+
+The optional local, gitignored `config/cockpit-observation` presence flag opts one home in to the redacted read-only Cockpit observation.
+Without the flag, `bin/fm-home-summary-refresh.sh` continues to publish the private `state/home-summary.json`, does not publish `state/cockpit-observation.json`, and `bin/fm-cockpit-observation.sh --json` refuses to return one.
+With the flag present, the same refresh derives and atomically publishes `state/cockpit-observation.json` from the validated private summary, and the canonical `--json` reader validates and returns it.
+Removing the flag makes the next refresh retire a prior regular, single-linked, mode-`0600` observation only while its device, identity, and bytes remain stable through the existing safe-file removal checks.
+A symlink, directory, wrong-mode file, multiple-linked file, or concurrently exchanged target is never followed or removed, while the absent flag still keeps the canonical reader disabled.
+The flag is home-local and is not part of the configuration inherited by secondmate homes.
+Only the file's presence is read, so its contents are ignored.
+The script headers own projection, validation, publication, and cleanup mechanics; [`architecture.md`](architecture.md) places this optional projection beside the always-active private summary.
+
 ## Calm preference (config/calm)
 
 The Pi Calm extension and the Claude Code Calm mod share the captain's home-local presentation choice in gitignored `config/calm` under the effective Firstmate home, so one `/calm` choice applies on either harness.
@@ -1041,10 +1052,10 @@ FM_TASKS_AXI_COMPATIBLE=   # internal one-hop handoff of an already-computed tas
 FM_GUARD_READ_ONLY=0    # internal/read-only guard mode: keep alarms but suppress drain, supervision repair, and checkout repair commands
 FM_GUARD_CONTINUE_LINE='This is a supervision warning only; the guarded operation WILL still run.'   # banner continuation line; fm-send.sh overrides it to name the requested message specifically
 FM_POLL=15              # seconds between watcher poll cycles
-FM_HOME_SUMMARY_INTERVAL=300   # seconds before a live watcher refreshes this home's private summary and redacted Cockpit observation even without a status signal; invalid or zero values use 300
-FM_HOME_SUMMARY_TIMEOUT=60     # seconds bounding the complete best-effort refresh of both publications, including lock acquisition, validation, atomic publication, and worker-side failure logging; invalid or zero values use 60
+FM_HOME_SUMMARY_INTERVAL=300   # seconds before a live watcher refreshes this home's private summary and any opted-in Cockpit observation even without a status signal; invalid or zero values use 300
+FM_HOME_SUMMARY_TIMEOUT=60     # seconds bounding the complete best-effort refresh of the private summary and any opted-in observation, including lock acquisition, validation, atomic publication, and worker-side failure logging; invalid or zero values use 60
 FM_HOME_SUMMARY_ERROR_LOG_MAX_BYTES=65536   # approximate size cap for state/.home-summary-refresh.log before it is trimmed to the newest 200 lines; invalid or zero values use 65536
-FM_HOME_SUMMARY_FAILURE_REPORT=2   # recorded publication failures since the redacted Cockpit observation's last publication before session start reports a HOME_SUMMARY line; invalid or zero values use 2
+FM_HOME_SUMMARY_FAILURE_REPORT=2   # recorded publication failures since the active private-summary or opted-in observation target's last publication before session start reports a HOME_SUMMARY line; invalid or zero values use 2
 FM_SNAPSHOT_CREW_STATE_TIMEOUT=10   # seconds bounding each local per-task current-state read inside bin/fm-fleet-snapshot.sh; remote endpoint liveness is not probed on the snapshot path
 FM_SNAPSHOT_LOCAL_READ_CONCURRENCY=8   # maximum local tasks whose current-state and endpoint observations are collected concurrently during snapshot composition
 FM_SNAPSHOT_BUDGET=5                # one total seconds budget for all concurrent remote home-ledger reads

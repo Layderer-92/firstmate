@@ -1056,7 +1056,7 @@ pass "failure records preserve refresh attempt ordering"
 
 report_out=$(run_bootstrap_detect "$REPORT_HOME")
 printf '%s\n' "$report_out" \
-  | grep -F 'HOME_SUMMARY: this home has never published state/cockpit-observation.json' \
+  | grep -F 'HOME_SUMMARY: this home has never published state/home-summary.json' \
     >/dev/null \
   || fail "a home that never published its ledger was reported as silent: $report_out"
 printf '%s\n' "$report_out" \

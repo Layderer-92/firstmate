@@ -34,7 +34,7 @@ pass() {
   echo "ok - $*"
 }
 
-CONFORMANCE_CLASSES="valid timestamp_epoch_identity canonical_timestamp validity_coupling exact_keys enums counts source_clock_ahead"
+CONFORMANCE_CLASSES="valid timestamp_epoch_identity canonical_timestamp validity_coupling exact_keys enums counts"
 if [ ! -f "$SCHEMA" ] || [ ! -f "$CORPUS" ]; then
   for vector_class in $CONFORMANCE_CLASSES; do
     printf 'not ok - conformance %s: canonical schema and corpus are required\n' \
@@ -65,7 +65,6 @@ required_classes = {
     "exact_keys",
     "enums",
     "counts",
-    "source_clock_ahead",
 }
 
 
@@ -148,27 +147,6 @@ if corpus.get("schema") != "fm-cockpit-observation-conformance.v1":
     failures.append("corpus: wrong corpus schema")
 if corpus.get("contract") != schema.get("properties", {}).get("schema", {}).get("const"):
     failures.append("corpus: contract does not match the canonical schema constant")
-consumer_semantics = schema.get("x-firstmate-consumer-semantics", {})
-structural_invalidity = consumer_semantics.get("structuralInvalidity", {})
-future_timestamp = consumer_semantics.get("futureTimestamp", {})
-if consumer_semantics.get("freshnessThresholdMilliseconds") != 10000:
-    failures.append("schema: fixed freshness threshold must be 10000 milliseconds")
-if structural_invalidity.get("verdict") != "source_invalid":
-    failures.append("schema: structural invalidity verdict must be source_invalid")
-if structural_invalidity.get("precedes") != "futureTimestamp":
-    failures.append("schema: structural validation must precede future timestamp classification")
-if "observation" not in structural_invalidity or structural_invalidity.get("observation") is not None:
-    failures.append("schema: structural invalidity must carry no observation payload")
-if future_timestamp.get("comparison") != "observed_epoch*1000 > consumer_now_ms":
-    failures.append("schema: future timestamp comparison is missing")
-if future_timestamp.get("toleranceMilliseconds") != 0:
-    failures.append("schema: future timestamp tolerance must be zero milliseconds")
-if future_timestamp.get("structuralValidationRequired") is not True:
-    failures.append("schema: future timestamp classification must require structural validity")
-if future_timestamp.get("verdict") != "source_clock_ahead":
-    failures.append("schema: future timestamp verdict must be source_clock_ahead")
-if "observation" not in future_timestamp or future_timestamp.get("observation") is not None:
-    failures.append("schema: future timestamp verdict must carry no observation payload")
 vectors = corpus.get("vectors")
 if not isinstance(vectors, list):
     failures.append("corpus: vectors must be an array")
@@ -177,14 +155,16 @@ if not isinstance(vectors, list):
 seen_ids = set()
 seen_classes = set()
 counts = {}
-source_clock_ahead_ids = set()
 fixture_base = Path(fixture_root)
 
 
 def contract_accepts(vector_id, document):
     home = fixture_base / vector_id
     state = home / "state"
+    config = home / "config"
     state.mkdir(parents=True, exist_ok=True)
+    config.mkdir(parents=True, exist_ok=True)
+    (config / "cockpit-observation").touch()
     (state / "cockpit-observation.json").write_text(
         json.dumps(document, separators=(",", ":")) + "\n",
         encoding="utf-8",
@@ -227,23 +207,6 @@ for vector in vectors:
             f"{vector_id}: contract expected {vector.get('contract_valid')} "
             f"got {contract_actual} ({detail})"
         )
-    if vector_class == "source_clock_ahead":
-        source_clock_ahead_ids.add(vector_id)
-        consumer_now_ms = vector.get("consumer_now_ms")
-        if not isinstance(consumer_now_ms, int):
-            failures.append(f"{vector_id}: integer consumer_now_ms is required")
-        elif document.get("observed_epoch", -1) * 1000 <= consumer_now_ms:
-            failures.append(f"{vector_id}: vector timestamp is not in the future")
-        expected_verdict = (
-            future_timestamp.get("verdict")
-            if schema_actual
-            else structural_invalidity.get("verdict")
-        )
-        if vector.get("expected_source_verdict") != expected_verdict:
-            failures.append(f"{vector_id}: expected verdict does not match schema ordering")
-        if "expected_observation" not in vector or vector.get("expected_observation") is not None:
-            failures.append(f"{vector_id}: expected observation payload must be null")
-
 valid_document = next(
     (copy.deepcopy(vector["document"]) for vector in vectors if vector.get("id") == "valid-complete"),
     None,
@@ -277,18 +240,6 @@ else:
 missing_classes = sorted(required_classes - seen_classes)
 if missing_classes:
     failures.append(f"corpus: missing classes {', '.join(missing_classes)}")
-required_source_clock_ahead_ids = {
-    "future-structurally-valid",
-    "future-structurally-invalid",
-}
-missing_source_clock_ahead_ids = sorted(
-    required_source_clock_ahead_ids - source_clock_ahead_ids
-)
-if missing_source_clock_ahead_ids:
-    failures.append(
-        "corpus: missing source_clock_ahead vectors "
-        + ", ".join(missing_source_clock_ahead_ids)
-    )
 unknown_classes = sorted(seen_classes - required_classes)
 if unknown_classes:
     failures.append(f"corpus: unknown classes {', '.join(unknown_classes)}")
@@ -336,6 +287,13 @@ fi
 exec "$REAL_DATE" "\$@"
 SH
 chmod +x "$FAKEBIN/date"
+
+run_writer() {
+  PATH="$FAKEBIN:$PATH" FM_TEST_EXTERNAL_CALL_LOG="$CALL_LOG" \
+    FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$HOME_DIR" \
+    FM_SNAPSHOT_NOW="$1" FM_SNAPSHOT_NOW_EPOCH="$2" \
+    "$WRITER"
+}
 
 SUMMARY="$TMP_ROOT/private-summary.json"
 cat > "$SUMMARY" <<EOF
@@ -390,7 +348,13 @@ fi
 pass "projection rejects private summaries without invalidity kind"
 
 printf '%s\n' "$PUBLIC_JSON" > "$HOME_DIR/state/cockpit-observation.json"
-chmod 644 "$HOME_DIR/state/cockpit-observation.json"
+chmod 600 "$HOME_DIR/state/cockpit-observation.json"
+if FM_HOME="$HOME_DIR" "$EXPORTER" --json >/dev/null 2>&1; then
+  fail "reader returned a Cockpit observation without the home opt-in"
+fi
+pass "stdout mode is off by default without the home opt-in"
+
+: > "$HOME_DIR/config/cockpit-observation"
 READ_BACK=$(FM_HOME="$HOME_DIR" "$EXPORTER" --json) \
   || fail "public observation could not be read"
 [ "$(printf '%s' "$READ_BACK" | jq -S .)" = "$(printf '%s' "$PUBLIC_JSON" | jq -S .)" ] \
@@ -515,6 +479,74 @@ if FM_HOME="$HOME_DIR" "$EXPORTER" --json >/dev/null 2>&1; then
   fail "missing public observation was accepted"
 fi
 pass "invalid, oversized, symlinked, and missing public files stop safely"
+
+rm -f "$HOME_DIR/config/cockpit-observation"
+run_writer "2026-09-04T20:01:00Z" 1788552060 \
+  || fail "default-off home-summary refresh failed"
+[ -f "$HOME_DIR/state/home-summary.json" ] \
+  || fail "default-off refresh did not publish the private summary"
+if [ -e "$HOME_DIR/state/cockpit-observation.json" ] \
+    || [ -L "$HOME_DIR/state/cockpit-observation.json" ]; then
+  fail "default-off refresh published a Cockpit observation"
+fi
+if FM_HOME="$HOME_DIR" "$EXPORTER" --json >/dev/null 2>&1; then
+  fail "default-off reader returned a Cockpit observation after refresh"
+fi
+pass "default-off refresh keeps the private summary active without Cockpit publication"
+
+printf '%s\n' "$PUBLIC_JSON" > "$HOME_DIR/state/cockpit-observation.json"
+chmod 600 "$HOME_DIR/state/cockpit-observation.json"
+run_writer "2026-09-04T20:02:00Z" 1788552120 \
+  || fail "opt-out refresh failed while retiring a safe Cockpit observation"
+if [ -e "$HOME_DIR/state/cockpit-observation.json" ] \
+    || [ -L "$HOME_DIR/state/cockpit-observation.json" ]; then
+  fail "opt-out refresh left a safe single-linked 0600 Cockpit observation"
+fi
+pass "opt-out refresh retires a safe Cockpit observation"
+
+UNSAFE_TARGET="$TMP_ROOT/unsafe-cockpit-target.json"
+printf 'unsafe target sentinel\n' > "$UNSAFE_TARGET"
+UNSAFE_TARGET_BEFORE=$(cksum "$UNSAFE_TARGET")
+ln -s "$UNSAFE_TARGET" "$HOME_DIR/state/cockpit-observation.json"
+run_writer "2026-09-04T20:03:00Z" 1788552180 \
+  || fail "opt-out refresh failed on a symlinked Cockpit target"
+[ -L "$HOME_DIR/state/cockpit-observation.json" ] \
+  || fail "opt-out refresh removed a symlinked Cockpit target"
+[ "$UNSAFE_TARGET_BEFORE" = "$(cksum "$UNSAFE_TARGET")" ] \
+  || fail "opt-out refresh followed and changed a symlinked Cockpit target"
+rm -f "$HOME_DIR/state/cockpit-observation.json"
+
+mkdir "$HOME_DIR/state/cockpit-observation.json"
+run_writer "2026-09-04T20:04:00Z" 1788552240 \
+  || fail "opt-out refresh failed on a Cockpit target directory"
+[ -d "$HOME_DIR/state/cockpit-observation.json" ] \
+  || fail "opt-out refresh removed a Cockpit target directory"
+rmdir "$HOME_DIR/state/cockpit-observation.json"
+
+printf 'wrong-mode sentinel\n' > "$HOME_DIR/state/cockpit-observation.json"
+chmod 644 "$HOME_DIR/state/cockpit-observation.json"
+WRONG_MODE_BEFORE=$(cksum "$HOME_DIR/state/cockpit-observation.json")
+run_writer "2026-09-04T20:05:00Z" 1788552300 \
+  || fail "opt-out refresh failed on a wrong-mode Cockpit target"
+[ "$WRONG_MODE_BEFORE" = "$(cksum "$HOME_DIR/state/cockpit-observation.json")" ] \
+  || fail "opt-out refresh changed a wrong-mode Cockpit target"
+[ "$(file_mode "$HOME_DIR/state/cockpit-observation.json")" = 644 ] \
+  || fail "opt-out refresh changed a wrong-mode Cockpit target's mode"
+rm -f "$HOME_DIR/state/cockpit-observation.json"
+
+printf 'multiple-link sentinel\n' > "$HOME_DIR/state/cockpit-observation.json"
+chmod 600 "$HOME_DIR/state/cockpit-observation.json"
+MULTIPLE_LINK="$TMP_ROOT/cockpit-observation-hardlink.json"
+ln "$HOME_DIR/state/cockpit-observation.json" "$MULTIPLE_LINK"
+run_writer "2026-09-04T20:06:00Z" 1788552360 \
+  || fail "opt-out refresh failed on a multiple-linked Cockpit target"
+[ -f "$HOME_DIR/state/cockpit-observation.json" ] \
+  && [ "$HOME_DIR/state/cockpit-observation.json" -ef "$MULTIPLE_LINK" ] \
+  || fail "opt-out refresh removed or replaced a multiple-linked Cockpit target"
+rm -f "$HOME_DIR/state/cockpit-observation.json" "$MULTIPLE_LINK"
+pass "opt-out leaves unsafe Cockpit targets untouched"
+
+: > "$HOME_DIR/config/cockpit-observation"
 
 printf 'sentinel\n' > "$HOME_DIR/state/unrelated-state"
 BEFORE_STATE=$(find "$HOME_DIR/state" -mindepth 1 -maxdepth 1 \

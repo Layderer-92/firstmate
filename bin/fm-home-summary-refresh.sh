@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fm-home-summary-refresh.sh - publish this home's private summary and redacted Cockpit observation.
+# fm-home-summary-refresh.sh - publish this home's private summary and optional redacted Cockpit observation.
 #
 # Usage: fm-home-summary-refresh.sh [--best-effort]
 #
@@ -25,11 +25,16 @@
 # teardown use that mode so this side-band publication can never change their
 # result. Without it, failures are printed and returned to the direct caller
 # for tests and diagnostics.
-# The same locked refresh derives the redacted state/cockpit-observation.json
-# contract owned by fm-cockpit-observation.sh from the newly published ledger,
-# then atomically publishes it and verifies the staged file's identity at the
-# destination. A Cockpit failure leaves the new private ledger in place and
-# preserves any prior complete observation unless an external actor replaced it.
+# When config/cockpit-observation is present, the same locked refresh derives
+# the redacted state/cockpit-observation.json contract owned by
+# fm-cockpit-observation.sh from the newly published ledger, then atomically
+# publishes it and verifies the staged file's identity at the destination.
+# Without that home-local flag, the private ledger is still published and the
+# refresh removes only a regular, single-linked, mode-0600 prior observation
+# whose device, identity, and bytes remain stable through the removal check.
+# Unsafe or exchanged targets are left untouched and never followed.
+# A Cockpit failure leaves the new private ledger in place and preserves any
+# prior complete observation unless an external actor replaced it.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,6 +46,7 @@ CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 PROJECTS="${FM_PROJECTS_OVERRIDE:-$FM_HOME/projects}"
 LEDGER="$STATE/home-summary.json"
 COCKPIT_LEDGER="$STATE/cockpit-observation.json"
+COCKPIT_OBSERVATION_FLAG="$CONFIG/cockpit-observation"
 ERROR_LOG="$STATE/.home-summary-refresh.log"
 REFRESH_LOCK="$STATE/.home-summary-refresh.lock"
 ERROR_LOG_MAX_BYTES=${FM_HOME_SUMMARY_ERROR_LOG_MAX_BYTES:-65536}
@@ -111,6 +117,30 @@ home_summary_cleanup() {
 home_summary_fail() {
   HOME_SUMMARY_ERROR=$1
   return 1
+}
+
+cockpit_observation_retire_if_safe() {
+  local state_device expected_identity expected_hash
+  if [ ! -e "$COCKPIT_LEDGER" ] && [ ! -L "$COCKPIT_LEDGER" ]; then
+    return 0
+  fi
+  state_device=$(fm_pr_file_device "$STATE" 2>/dev/null) || return 0
+  fm_pr_private_file_valid "$COCKPIT_LEDGER" 600 "$state_device" || return 0
+  expected_identity=$(fm_pr_file_identity "$COCKPIT_LEDGER" 2>/dev/null) || return 0
+  expected_hash=$(fm_pr_sha256 "$COCKPIT_LEDGER" 2>/dev/null) || return 0
+  if fm_pr_poll_retirement_remove_exact "$COCKPIT_LEDGER" "$state_device" \
+      "$expected_identity" "$expected_hash"; then
+    return 0
+  fi
+  if [ ! -e "$COCKPIT_LEDGER" ] && [ ! -L "$COCKPIT_LEDGER" ]; then
+    return 0
+  fi
+  if fm_pr_private_file_valid "$COCKPIT_LEDGER" 600 "$state_device" \
+      && [ "$(fm_pr_file_identity "$COCKPIT_LEDGER" 2>/dev/null || true)" = "$expected_identity" ] \
+      && [ "$(fm_pr_sha256 "$COCKPIT_LEDGER" 2>/dev/null || true)" = "$expected_hash" ]; then
+    return 1
+  fi
+  return 0
 }
 
 home_summary_refresh_once() {
@@ -196,43 +226,50 @@ home_summary_refresh_once() {
     return 1
   fi
   HOME_SUMMARY_TMP=
-  if [ -e "$COCKPIT_LEDGER" ] || [ -L "$COCKPIT_LEDGER" ]; then
-    if [ ! -f "$COCKPIT_LEDGER" ] || [ -L "$COCKPIT_LEDGER" ]; then
-      home_summary_fail "private summary published, but Cockpit export target is unsafe"
+  if [ ! -e "$COCKPIT_OBSERVATION_FLAG" ]; then
+    if ! cockpit_observation_retire_if_safe; then
+      home_summary_fail "private summary published, but disabled Cockpit observation could not be removed"
       return 1
     fi
-  fi
-  COCKPIT_OBSERVATION_TMP=$(umask 077; mktemp "$STATE/.cockpit-observation.json.XXXXXX") || {
-    home_summary_fail "private summary published, but Cockpit publication staging failed"
-    return 1
-  }
-  if ! "$SCRIPT_DIR/fm-cockpit-observation.sh" --project-summary "$LEDGER" \
-      > "$COCKPIT_OBSERVATION_TMP"; then
-    home_summary_fail "private summary published, but Cockpit observation projection failed"
-    return 1
-  fi
-  if ! chmod 600 "$COCKPIT_OBSERVATION_TMP" 2>/dev/null; then
-    home_summary_fail "private summary published, but Cockpit publication mode failed"
-    return 1
-  fi
-  COCKPIT_OBSERVATION_DEVICE=$(fm_pr_file_device "$COCKPIT_OBSERVATION_TMP") || {
-    home_summary_fail "private summary published, but Cockpit publication device could not be verified"
-    return 1
-  }
-  COCKPIT_OBSERVATION_IDENTITY=$(fm_pr_file_identity "$COCKPIT_OBSERVATION_TMP") || {
-    home_summary_fail "private summary published, but Cockpit publication identity could not be verified"
-    return 1
-  }
-  if ! mv -f -- "$COCKPIT_OBSERVATION_TMP" "$COCKPIT_LEDGER" 2>/dev/null; then
-    home_summary_fail "private summary published, but atomic Cockpit observation replacement failed: $COCKPIT_LEDGER"
-    return 1
-  fi
-  COCKPIT_OBSERVATION_TMP=
-  if ! fm_pr_private_file_valid "$COCKPIT_LEDGER" 600 "$COCKPIT_OBSERVATION_DEVICE" \
-    || [ "$(fm_pr_file_identity "$COCKPIT_LEDGER" 2>/dev/null || true)" \
-      != "$COCKPIT_OBSERVATION_IDENTITY" ]; then
-    home_summary_fail "private summary published, but Cockpit observation target changed during atomic replacement: $COCKPIT_LEDGER"
-    return 1
+  else
+    if [ -e "$COCKPIT_LEDGER" ] || [ -L "$COCKPIT_LEDGER" ]; then
+      if [ ! -f "$COCKPIT_LEDGER" ] || [ -L "$COCKPIT_LEDGER" ]; then
+        home_summary_fail "private summary published, but Cockpit export target is unsafe"
+        return 1
+      fi
+    fi
+    COCKPIT_OBSERVATION_TMP=$(umask 077; mktemp "$STATE/.cockpit-observation.json.XXXXXX") || {
+      home_summary_fail "private summary published, but Cockpit publication staging failed"
+      return 1
+    }
+    if ! "$SCRIPT_DIR/fm-cockpit-observation.sh" --project-summary "$LEDGER" \
+        > "$COCKPIT_OBSERVATION_TMP"; then
+      home_summary_fail "private summary published, but Cockpit observation projection failed"
+      return 1
+    fi
+    if ! chmod 600 "$COCKPIT_OBSERVATION_TMP" 2>/dev/null; then
+      home_summary_fail "private summary published, but Cockpit publication mode failed"
+      return 1
+    fi
+    COCKPIT_OBSERVATION_DEVICE=$(fm_pr_file_device "$COCKPIT_OBSERVATION_TMP") || {
+      home_summary_fail "private summary published, but Cockpit publication device could not be verified"
+      return 1
+    }
+    COCKPIT_OBSERVATION_IDENTITY=$(fm_pr_file_identity "$COCKPIT_OBSERVATION_TMP") || {
+      home_summary_fail "private summary published, but Cockpit publication identity could not be verified"
+      return 1
+    }
+    if ! mv -f -- "$COCKPIT_OBSERVATION_TMP" "$COCKPIT_LEDGER" 2>/dev/null; then
+      home_summary_fail "private summary published, but atomic Cockpit observation replacement failed: $COCKPIT_LEDGER"
+      return 1
+    fi
+    COCKPIT_OBSERVATION_TMP=
+    if ! fm_pr_private_file_valid "$COCKPIT_LEDGER" 600 "$COCKPIT_OBSERVATION_DEVICE" \
+      || [ "$(fm_pr_file_identity "$COCKPIT_LEDGER" 2>/dev/null || true)" \
+        != "$COCKPIT_OBSERVATION_IDENTITY" ]; then
+      home_summary_fail "private summary published, but Cockpit observation target changed during atomic replacement: $COCKPIT_LEDGER"
+      return 1
+    fi
   fi
   fm_lock_release "$REFRESH_LOCK"
   HOME_SUMMARY_LOCK_HELD=0

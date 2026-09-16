@@ -5,8 +5,10 @@
 #   fm-cockpit-observation.sh --json
 #   fm-cockpit-observation.sh --project-summary <path>
 #
-# `--json` validates and prints this home's atomically published
-# state/cockpit-observation.json without reading any other home state.
+# `--json` is default-off. It validates and prints this home's atomically
+# published state/cockpit-observation.json only while the home-local
+# config/cockpit-observation presence flag exists, without reading any other
+# home state.
 # `--project-summary` is the pure projection used by fm-home-summary-refresh.sh
 # against its already-published and validated private summary ledger.
 # Neither mode runs a backend, provider, remote, no-mistakes, or agent command.
@@ -21,7 +23,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+CONFIG="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}"
 PUBLIC_OBSERVATION="$STATE/cockpit-observation.json"
+COCKPIT_OBSERVATION_FLAG="$CONFIG/cockpit-observation"
 readonly MAX_BYTES=65536
 
 usage() {
@@ -143,6 +147,8 @@ project_summary() {  # <private-summary-path>
 case "${1:-}" in
   --json)
     [ "$#" -eq 1 ] || { usage >&2; exit 2; }
+    [ -e "$COCKPIT_OBSERVATION_FLAG" ] \
+      || { echo "fm-cockpit-observation: Cockpit observation is disabled for this home" >&2; exit 1; }
     regular_bounded_file "$PUBLIC_OBSERVATION" \
       || { echo "fm-cockpit-observation: public observation is missing, unsafe, or oversized" >&2; exit 1; }
     public_document "$PUBLIC_OBSERVATION" \

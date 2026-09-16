@@ -3,21 +3,6 @@
   "$id": "https://firstmate.local/contracts/fm-cockpit-observation-v1.schema.json",
   "title": "FirstMate Cockpit Observation v1",
   "description": "Exact whitelisted source document published for the read-only Cockpit boundary. Cross-field timestamp and epoch identity plus actual calendar validity are covered by the versioned semantic conformance corpus.",
-  "x-firstmate-consumer-semantics": {
-    "freshnessThresholdMilliseconds": 10000,
-    "structuralInvalidity": {
-      "verdict": "source_invalid",
-      "precedes": "futureTimestamp",
-      "observation": null
-    },
-    "futureTimestamp": {
-      "structuralValidationRequired": true,
-      "comparison": "observed_epoch*1000 > consumer_now_ms",
-      "toleranceMilliseconds": 0,
-      "verdict": "source_clock_ahead",
-      "observation": null
-    }
-  },
   "type": "object",
   "additionalProperties": false,
   "required": [

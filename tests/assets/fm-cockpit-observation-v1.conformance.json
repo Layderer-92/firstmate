@@ -72,60 +72,6 @@
       }
     },
     {
-      "id": "future-structurally-valid",
-      "class": "source_clock_ahead",
-      "schema_valid": true,
-      "contract_valid": true,
-      "consumer_now_ms": 1767225600000,
-      "expected_source_verdict": "source_clock_ahead",
-      "expected_observation": null,
-      "assertion": "A structurally valid source one second in the future is clock-ahead with zero tolerance and no observation payload.",
-      "document": {
-        "schema": "fm-cockpit-observation.v1",
-        "data_class": "internal_non_sensitive",
-        "observed_at": "2026-01-01T00:00:01Z",
-        "observed_epoch": 1767225601,
-        "state": "no_active_work",
-        "valid": true,
-        "invalidity": null,
-        "counts": {
-          "active_children": 0,
-          "decisions_open": 0,
-          "holds": 0,
-          "queued": 0,
-          "landed": 0,
-          "endpoints": 0
-        }
-      }
-    },
-    {
-      "id": "future-structurally-invalid",
-      "class": "source_clock_ahead",
-      "schema_valid": false,
-      "contract_valid": false,
-      "consumer_now_ms": 1767225600000,
-      "expected_source_verdict": "source_invalid",
-      "expected_observation": null,
-      "assertion": "Structural invalidity takes precedence over clock-ahead classification and carries no observation payload.",
-      "document": {
-        "schema": "fm-cockpit-observation.v1",
-        "data_class": "internal_non_sensitive",
-        "observed_at": "2026-01-01T00:00:01Z",
-        "observed_epoch": 1767225601,
-        "state": "idle",
-        "valid": true,
-        "invalidity": null,
-        "counts": {
-          "active_children": 0,
-          "decisions_open": 0,
-          "holds": 0,
-          "queued": 0,
-          "landed": 0,
-          "endpoints": 0
-        }
-      }
-    },
-    {
       "id": "timestamp-impossible-calendar-date",
       "class": "canonical_timestamp",
       "schema_valid": true,
