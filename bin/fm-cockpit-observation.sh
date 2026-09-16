@@ -13,17 +13,6 @@
 #
 # `contracts/fm-cockpit-observation-v1.schema.json` owns the canonical Draft
 # 2020-12 grammar. This script owns projection and runtime enforcement.
-# The following field summary is non-normative:
-#   schema: "fm-cockpit-observation.v1"
-#   data_class: "internal_non_sensitive"
-#   observed_at: the owning home summary's generated UTC timestamp
-#   observed_epoch: the owning home summary's generated Unix epoch
-#   state: unknown|captain_decision|active_child_work|externally_held|no_active_work
-#   valid: boolean
-#   invalidity: null|missing_backlog|unstructured_current|orphan_in_flight|
-#     unowned_current|terminal_in_flight|child_current_unavailable
-#   counts: non-negative integer active_children, decisions_open, holds,
-#     queued, landed, and endpoints counts
 # No home, host, path, task or child identifier, text, endpoint, model, harness,
 # lineage, prompt, event, report, or provider field crosses this boundary.
 set -u
