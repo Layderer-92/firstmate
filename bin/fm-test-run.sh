@@ -1576,6 +1576,12 @@ families_for_changed_path() {
     docs/configuration.md|docs/supervision-protocols/*)
       printf '%s\n' pure-contract-unit
       ;;
+    tests/assets/fm-cockpit-observation-v1.conformance.json)
+      # The observation corpus is consumed directly by its contract suite.
+      # Keep additions and edits on the ordinary --changed gate path instead
+      # of letting the generic tests/* fail-closed arm reject the candidate.
+      printf '%s\n' __script__:fm-cockpit-observation.test.sh
+      ;;
     tests/git-config-helpers.sh)
       # The reference scan is not transitive, so match the two helpers that
       # source this one as well: most suites inherit it only through them.
