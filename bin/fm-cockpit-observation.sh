@@ -11,8 +11,9 @@
 # against its already-produced and validated private summary temporary file.
 # Neither mode runs a backend, provider, remote, no-mistakes, or agent command.
 #
-# This header owns schema `fm-cockpit-observation.v1`.
-# The exact document is:
+# `contracts/fm-cockpit-observation-v1.schema.json` owns the canonical Draft
+# 2020-12 grammar. This script owns projection and runtime enforcement.
+# The following field summary is non-normative:
 #   schema: "fm-cockpit-observation.v1"
 #   data_class: "internal_non_sensitive"
 #   observed_at: the owning home summary's generated UTC timestamp
