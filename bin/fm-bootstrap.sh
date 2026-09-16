@@ -1562,13 +1562,15 @@ detect_code_root_backlog_fork() {
 detect_home_summary_publication() {
   local log="$STATE/.home-summary-refresh.log"
   local observation="$STATE/cockpit-observation.json"
-  local since='' counted failures last threshold
+  local observation_document since='' counted failures last threshold
   threshold=${FM_HOME_SUMMARY_FAILURE_REPORT:-2}
   case "$threshold" in ''|*[!0-9]*|0) threshold=2 ;; esac
   [ -f "$log" ] && [ -r "$log" ] && [ ! -L "$log" ] || return 0
   if [ -f "$observation" ] && [ -r "$observation" ] && [ ! -L "$observation" ]; then
-    since=$(LC_ALL=C sed -n 's/.*"observed_at"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
-      "$observation" 2>/dev/null | head -1)
+    if observation_document=$("$SCRIPT_DIR/fm-cockpit-observation.sh" --json 2>/dev/null); then
+      since=$(printf '%s\n' "$observation_document" \
+        | jq -e -r '.observed_at' 2>/dev/null) || since=
+    fi
   fi
   # Publication and failure stamps have whole-second precision, so failures in
   # the publication's own second remain quiet until a later failure advances

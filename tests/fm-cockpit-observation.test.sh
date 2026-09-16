@@ -397,6 +397,66 @@ READ_BACK=$(FM_HOME="$HOME_DIR" "$EXPORTER" --json) \
   || fail "stdout mode changed the public document"
 pass "stdout mode validates and returns the public document"
 
+REAL_JQ=$(command -v jq)
+JQ_RACE_BIN="$TMP_ROOT/jq-race-bin"
+JQ_RACE_COUNT="$TMP_ROOT/jq-race-count"
+mkdir -p "$JQ_RACE_BIN"
+cat > "$JQ_RACE_BIN/jq" <<'SH'
+#!/usr/bin/env bash
+count=0
+[ ! -f "$FM_TEST_JQ_RACE_COUNT" ] \
+  || count=$(cat "$FM_TEST_JQ_RACE_COUNT" 2>/dev/null || true)
+case "$count" in ''|*[!0-9]*) count=0 ;; esac
+count=$((count + 1))
+printf '%s\n' "$count" > "$FM_TEST_JQ_RACE_COUNT"
+"$FM_TEST_REAL_JQ" "$@"
+rc=$?
+if [ "$rc" -eq 0 ] && [ "$count" -eq 1 ]; then
+  cp "$FM_TEST_JQ_RACE_REPLACEMENT" "$FM_TEST_JQ_RACE_SOURCE"
+fi
+exit "$rc"
+SH
+chmod +x "$JQ_RACE_BIN/jq"
+
+PUBLIC_RACE_ORIGINAL="$TMP_ROOT/public-race-original.json"
+PUBLIC_RACE_REPLACEMENT="$TMP_ROOT/public-race-replacement.json"
+cp "$HOME_DIR/state/cockpit-observation.json" "$PUBLIC_RACE_ORIGINAL"
+printf '{"home":"/secret/home","doing":"PUBLIC_TOCTOU_CANARY"}\n' \
+  > "$PUBLIC_RACE_REPLACEMENT"
+rm -f "$JQ_RACE_COUNT"
+READ_BACK=$(PATH="$JQ_RACE_BIN:$PATH" FM_TEST_REAL_JQ="$REAL_JQ" \
+  FM_TEST_JQ_RACE_COUNT="$JQ_RACE_COUNT" \
+  FM_TEST_JQ_RACE_SOURCE="$HOME_DIR/state/cockpit-observation.json" \
+  FM_TEST_JQ_RACE_REPLACEMENT="$PUBLIC_RACE_REPLACEMENT" \
+  FM_HOME="$HOME_DIR" "$EXPORTER" --json) \
+  || fail "public observation read failed during the controlled path exchange"
+if printf '%s' "$READ_BACK" | grep -F 'PUBLIC_TOCTOU_CANARY' >/dev/null; then
+  fail "public observation read reopened its path and exposed replacement bytes"
+fi
+[ "$(printf '%s' "$READ_BACK" | jq -S .)" = "$(jq -S . "$PUBLIC_RACE_ORIGINAL")" ] \
+  || fail "public observation read did not return the bytes it validated"
+cp "$PUBLIC_RACE_ORIGINAL" "$HOME_DIR/state/cockpit-observation.json"
+
+SUMMARY_RACE_ORIGINAL="$TMP_ROOT/private-summary-race-original.json"
+SUMMARY_RACE_REPLACEMENT="$TMP_ROOT/private-summary-race-replacement.json"
+cp "$SUMMARY" "$SUMMARY_RACE_ORIGINAL"
+jq '.counts.active_children = "PRIVATE_TOCTOU_CANARY"' "$SUMMARY" \
+  > "$SUMMARY_RACE_REPLACEMENT"
+rm -f "$JQ_RACE_COUNT"
+PROJECTED_RACE=$(PATH="$JQ_RACE_BIN:$PATH" FM_TEST_REAL_JQ="$REAL_JQ" \
+  FM_TEST_JQ_RACE_COUNT="$JQ_RACE_COUNT" \
+  FM_TEST_JQ_RACE_SOURCE="$SUMMARY" \
+  FM_TEST_JQ_RACE_REPLACEMENT="$SUMMARY_RACE_REPLACEMENT" \
+  "$EXPORTER" --project-summary "$SUMMARY") \
+  || fail "private summary projection failed during the controlled path exchange"
+if printf '%s' "$PROJECTED_RACE" | grep -F 'PRIVATE_TOCTOU_CANARY' >/dev/null; then
+  fail "private summary projection reopened its path and exposed unvalidated replacement bytes"
+fi
+printf '%s' "$PROJECTED_RACE" | jq -e '.counts.active_children == 1' >/dev/null \
+  || fail "private summary projection did not use the document it validated"
+cp "$SUMMARY_RACE_ORIGINAL" "$SUMMARY"
+pass "validation and emission consume one opened observation document"
+
 {
   printf '{"home":"/secret/home","doing":"private prompt text"}\n'
   printf '%s\n' "$PUBLIC_JSON"
@@ -481,6 +541,87 @@ FM_HOME="$HOME_DIR" "$EXPORTER" --json | jq -e '
 ' >/dev/null || fail "integrated publication was not deterministic"
 [ ! -s "$CALL_LOG" ] || fail "integrated publication executed an external command: $(cat "$CALL_LOG")"
 pass "home-summary refresh atomically publishes the redacted public observation"
+
+PUBLIC_BEFORE_FAILED_REPLACEMENT="$TMP_ROOT/public-before-failed-replacement.json"
+FAIL_MV_BIN="$TMP_ROOT/fail-mv-bin"
+REAL_MV=$(command -v mv)
+cp "$HOME_DIR/state/cockpit-observation.json" "$PUBLIC_BEFORE_FAILED_REPLACEMENT"
+mkdir -p "$FAIL_MV_BIN"
+cat > "$FAIL_MV_BIN/mv" <<'SH'
+#!/usr/bin/env bash
+destination=
+for argument in "$@"; do
+  destination=$argument
+done
+if [ "$destination" = "$FM_TEST_FAIL_MV_TARGET" ]; then
+  exit 74
+fi
+exec "$FM_TEST_REAL_MV" "$@"
+SH
+chmod +x "$FAIL_MV_BIN/mv"
+if PATH="$FAIL_MV_BIN:$FAKEBIN:$PATH" FM_TEST_REAL_MV="$REAL_MV" \
+  FM_TEST_FAIL_MV_TARGET="$HOME_DIR/state/cockpit-observation.json" \
+  FM_TEST_EXTERNAL_CALL_LOG="$CALL_LOG" FM_ROOT_OVERRIDE="$ROOT" \
+  FM_HOME="$HOME_DIR" FM_SNAPSHOT_NOW="2026-09-04T20:06:00Z" \
+  FM_SNAPSHOT_NOW_EPOCH=1788552360 "$WRITER" >/dev/null 2>&1; then
+  fail "a failed Cockpit observation replacement was reported as success"
+fi
+cmp -s "$PUBLIC_BEFORE_FAILED_REPLACEMENT" \
+  "$HOME_DIR/state/cockpit-observation.json" \
+  || fail "a failed Cockpit observation replacement changed the prior publication"
+pass "a failed Cockpit replacement preserves the prior observation byte-for-byte"
+
+RACE_MV_BIN="$TMP_ROOT/race-mv-bin"
+RACE_SAVED_OBSERVATION="$TMP_ROOT/race-saved-observation.json"
+mkdir -p "$RACE_MV_BIN"
+cat > "$RACE_MV_BIN/mv" <<'SH'
+#!/usr/bin/env bash
+destination=
+for argument in "$@"; do
+  destination=$argument
+done
+if [ "$destination" = "$FM_TEST_RACE_MV_TARGET" ]; then
+  "$FM_TEST_REAL_MV" -f -- "$destination" "$FM_TEST_RACE_MV_SAVED" || exit 75
+  mkdir "$destination" || exit 76
+fi
+exec "$FM_TEST_REAL_MV" "$@"
+SH
+chmod +x "$RACE_MV_BIN/mv"
+if PATH="$RACE_MV_BIN:$FAKEBIN:$PATH" FM_TEST_REAL_MV="$REAL_MV" \
+  FM_TEST_RACE_MV_TARGET="$HOME_DIR/state/cockpit-observation.json" \
+  FM_TEST_RACE_MV_SAVED="$RACE_SAVED_OBSERVATION" \
+  FM_TEST_EXTERNAL_CALL_LOG="$CALL_LOG" FM_ROOT_OVERRIDE="$ROOT" \
+  FM_HOME="$HOME_DIR" FM_SNAPSHOT_NOW="2026-09-04T20:06:30Z" \
+  FM_SNAPSHOT_NOW_EPOCH=1788552390 "$WRITER" >/dev/null 2>&1; then
+  fail "a replaced Cockpit target produced false publication success"
+fi
+[ -d "$HOME_DIR/state/cockpit-observation.json" ] \
+  || fail "the controlled target exchange did not reach the publication boundary"
+find "$HOME_DIR/state/cockpit-observation.json" -mindepth 1 -maxdepth 1 \
+  -type f -delete
+rmdir "$HOME_DIR/state/cockpit-observation.json"
+mv "$RACE_SAVED_OBSERVATION" "$HOME_DIR/state/cockpit-observation.json"
+pass "Cockpit publication detects a target exchanged during atomic replacement"
+
+printf '%s\n' '{"observed_at":"9999-99-99T99:99:99Z"}' \
+  > "$HOME_DIR/state/cockpit-observation.json"
+cat > "$HOME_DIR/state/.home-summary-refresh.log" <<'EOF'
+[2026-09-04T20:08:00Z] first controlled publication failure
+[2026-09-04T20:09:00Z] second controlled publication failure
+EOF
+BOOTSTRAP_OUT=$(PATH="$FAKEBIN:$PATH" FM_TEST_EXTERNAL_CALL_LOG="$CALL_LOG" \
+  FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$HOME_DIR" \
+  FM_BOOTSTRAP_DETECT_ONLY=1 FM_BOOTSTRAP_NETWORK=skip \
+  "$BOOTSTRAP" 2>/dev/null)
+printf '%s\n' "$BOOTSTRAP_OUT" \
+  | grep -F 'HOME_SUMMARY: this home has never published state/cockpit-observation.json' \
+    >/dev/null \
+  || fail "an invalid observation timestamp hid recorded publication failures: $BOOTSTRAP_OUT"
+printf '%s\n' "$BOOTSTRAP_OUT" | grep -F '2 failed attempt(s)' >/dev/null \
+  || fail "invalid timestamp fallback omitted the recorded failure count: $BOOTSTRAP_OUT"
+cp "$PUBLIC_BEFORE_FAILED_REPLACEMENT" "$HOME_DIR/state/cockpit-observation.json"
+rm -f "$HOME_DIR/state/.home-summary-refresh.log"
+pass "bootstrap trusts only a validated bounded observation timestamp"
 
 PUBLIC_BEFORE_UNSAFE_TARGET="$TMP_ROOT/public-before-unsafe-target.json"
 cp -p "$HOME_DIR/state/cockpit-observation.json" "$PUBLIC_BEFORE_UNSAFE_TARGET" \

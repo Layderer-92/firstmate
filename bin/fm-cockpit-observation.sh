@@ -43,74 +43,72 @@ regular_bounded_file() {  # <path>
   [ "$bytes" -le "$MAX_BYTES" ]
 }
 
-public_document_valid() {  # <path>
-  jq -s -e '
-    length == 1 and (.[0] |
-    (keys == ["counts","data_class","invalidity","observed_at","observed_epoch","schema","state","valid"])
-    and .schema == "fm-cockpit-observation.v1"
-    and .data_class == "internal_non_sensitive"
-    and (.observed_at | type) == "string"
-    and (.observed_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
-    and (.observed_epoch | type) == "number"
-    and .observed_epoch >= 0
-    and (.observed_epoch | floor) == .observed_epoch
-    and (.observed_at | fromdateiso8601) == .observed_epoch
-    and (.observed_at as $timestamp | ($timestamp | fromdateiso8601 | todateiso8601) == $timestamp)
-    and (.state == "unknown" or .state == "captain_decision"
-      or .state == "active_child_work" or .state == "externally_held"
-      or .state == "no_active_work")
-    and (.valid | type) == "boolean"
-    and (.invalidity == null or .invalidity == "missing_backlog"
-      or .invalidity == "unstructured_current" or .invalidity == "orphan_in_flight"
-      or .invalidity == "unowned_current" or .invalidity == "terminal_in_flight"
-      or .invalidity == "child_current_unavailable")
-    and (.valid == (.invalidity == null))
-    and (.counts | type) == "object"
-    and (.counts | keys == ["active_children","decisions_open","endpoints","holds","landed","queued"])
-    and all(.counts[]; type == "number" and . >= 0 and (floor == .)))
-  ' "$1" >/dev/null 2>&1
+public_document() {  # <path>
+  jq -s -c -e '
+    if length == 1 and (.[0] |
+      (keys == ["counts","data_class","invalidity","observed_at","observed_epoch","schema","state","valid"])
+      and .schema == "fm-cockpit-observation.v1"
+      and .data_class == "internal_non_sensitive"
+      and (.observed_at | type) == "string"
+      and (.observed_at | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
+      and (.observed_epoch | type) == "number"
+      and .observed_epoch >= 0
+      and (.observed_epoch | floor) == .observed_epoch
+      and (.observed_at | fromdateiso8601) == .observed_epoch
+      and (.observed_at as $timestamp | ($timestamp | fromdateiso8601 | todateiso8601) == $timestamp)
+      and (.state == "unknown" or .state == "captain_decision"
+        or .state == "active_child_work" or .state == "externally_held"
+        or .state == "no_active_work")
+      and (.valid | type) == "boolean"
+      and (.invalidity == null or .invalidity == "missing_backlog"
+        or .invalidity == "unstructured_current" or .invalidity == "orphan_in_flight"
+        or .invalidity == "unowned_current" or .invalidity == "terminal_in_flight"
+        or .invalidity == "child_current_unavailable")
+      and (.valid == (.invalidity == null))
+      and (.counts | type) == "object"
+      and (.counts | keys == ["active_children","decisions_open","endpoints","holds","landed","queued"])
+      and all(.counts[]; type == "number" and . >= 0 and (floor == .)))
+    then .[0]
+    else empty
+    end
+  ' "$1" 2>/dev/null
 }
 
 project_summary() {  # <private-summary-path>
   local source=$1 document bytes
   regular_file "$source" \
     || { echo "fm-cockpit-observation: private summary is missing or unsafe" >&2; return 1; }
-  if ! jq -s -e '
-    length == 1 and (.[0] |
-    .schema == "fm-secondmate-home-summary.v1"
-    and (.generated | type) == "string"
-    and (.generated | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
-    and (.generated_epoch | type) == "number"
-    and .generated_epoch >= 0
-    and (.generated_epoch | floor) == .generated_epoch
-    and (.generated | fromdateiso8601) == .generated_epoch
-    and (.generated as $timestamp | ($timestamp | fromdateiso8601 | todateiso8601) == $timestamp)
-    and (.valid | type) == "boolean"
-    and (.state == "unknown" or .state == "captain_decision"
-      or .state == "active_child_work" or .state == "externally_held"
-      or .state == "no_active_work")
-    and (.invalidity | type) == "object"
-    and (.invalidity | has("kind"))
-    and (.invalidity.kind == null or .invalidity.kind == "missing_backlog"
-      or .invalidity.kind == "unstructured_current" or .invalidity.kind == "orphan_in_flight"
-      or .invalidity.kind == "unowned_current" or .invalidity.kind == "terminal_in_flight"
-      or .invalidity.kind == "child_current_unavailable")
-    and (.valid == (.invalidity.kind == null))
-    and (.counts | type) == "object"
-    and all([
-      .counts.active_children,
-      .counts.decisions_open,
-      .counts.holds,
-      .counts.queued,
-      .counts.landed,
-      .counts.endpoints
-    ][]; type == "number" and . >= 0 and (floor == .)))
-  ' "$source" >/dev/null 2>&1; then
-    echo "fm-cockpit-observation: private summary is malformed" >&2
-    return 1
-  fi
-  document=$(jq -s -c '.[0] |
-    {
+  if ! document=$(jq -s -c -e '
+    if length == 1 and (.[0] |
+      .schema == "fm-secondmate-home-summary.v1"
+      and (.generated | type) == "string"
+      and (.generated | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
+      and (.generated_epoch | type) == "number"
+      and .generated_epoch >= 0
+      and (.generated_epoch | floor) == .generated_epoch
+      and (.generated | fromdateiso8601) == .generated_epoch
+      and (.generated as $timestamp | ($timestamp | fromdateiso8601 | todateiso8601) == $timestamp)
+      and (.valid | type) == "boolean"
+      and (.state == "unknown" or .state == "captain_decision"
+        or .state == "active_child_work" or .state == "externally_held"
+        or .state == "no_active_work")
+      and (.invalidity | type) == "object"
+      and (.invalidity | has("kind"))
+      and (.invalidity.kind == null or .invalidity.kind == "missing_backlog"
+        or .invalidity.kind == "unstructured_current" or .invalidity.kind == "orphan_in_flight"
+        or .invalidity.kind == "unowned_current" or .invalidity.kind == "terminal_in_flight"
+        or .invalidity.kind == "child_current_unavailable")
+      and (.valid == (.invalidity.kind == null))
+      and (.counts | type) == "object"
+      and all([
+        .counts.active_children,
+        .counts.decisions_open,
+        .counts.holds,
+        .counts.queued,
+        .counts.landed,
+        .counts.endpoints
+      ][]; type == "number" and . >= 0 and (floor == .)))
+    then .[0] | {
       schema:"fm-cockpit-observation.v1",
       data_class:"internal_non_sensitive",
       observed_at:.generated,
@@ -127,7 +125,12 @@ project_summary() {  # <private-summary-path>
         endpoints:.counts.endpoints
       }
     }
-  ' "$source") || return 1
+    else empty
+    end
+  ' "$source" 2>/dev/null); then
+    echo "fm-cockpit-observation: private summary is malformed" >&2
+    return 1
+  fi
   bytes=$(printf '%s' "$document" | LC_ALL=C wc -c | tr -d '[:space:]') || return 1
   case "$bytes" in ''|*[!0-9]*) return 1 ;; esac
   if [ "$bytes" -gt "$MAX_BYTES" ]; then
@@ -142,9 +145,8 @@ case "${1:-}" in
     [ "$#" -eq 1 ] || { usage >&2; exit 2; }
     regular_bounded_file "$PUBLIC_OBSERVATION" \
       || { echo "fm-cockpit-observation: public observation is missing, unsafe, or oversized" >&2; exit 1; }
-    public_document_valid "$PUBLIC_OBSERVATION" \
+    public_document "$PUBLIC_OBSERVATION" \
       || { echo "fm-cockpit-observation: public observation is malformed" >&2; exit 1; }
-    jq -s -c '.[0]' "$PUBLIC_OBSERVATION"
     ;;
   --project-summary)
     [ "$#" -eq 2 ] || { usage >&2; exit 2; }

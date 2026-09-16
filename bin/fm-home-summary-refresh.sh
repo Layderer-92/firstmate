@@ -27,8 +27,9 @@
 # for tests and diagnostics.
 # The same locked refresh derives the redacted state/cockpit-observation.json
 # contract owned by fm-cockpit-observation.sh from the newly published ledger,
-# then atomically publishes it. A Cockpit failure leaves the new private ledger
-# in place and preserves any prior complete observation.
+# then atomically publishes it and verifies the staged file's identity at the
+# destination. A Cockpit failure leaves the new private ledger in place and
+# preserves any prior complete observation unless an external actor replaced it.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -52,11 +53,17 @@ HOME_SUMMARY_FAILURE_STAMP=
 HOME_SUMMARY_TMP=
 HOME_SUMMARY_ERR_TMP=
 COCKPIT_OBSERVATION_TMP=
+COCKPIT_OBSERVATION_DEVICE=
+COCKPIT_OBSERVATION_IDENTITY=
 HOME_SUMMARY_LOCK_HELD=0
 
 # shellcheck source=bin/fm-timeout-lib.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/fm-timeout-lib.sh"
+
+# shellcheck source=bin/fm-pr-lib.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/fm-pr-lib.sh"
 
 usage() {
   sed -n '2,${/^#/!q;p;}' "$0" | sed 's/^# \{0,1\}//'
@@ -208,11 +215,25 @@ home_summary_refresh_once() {
     home_summary_fail "private summary published, but Cockpit publication mode failed"
     return 1
   fi
+  COCKPIT_OBSERVATION_DEVICE=$(fm_pr_file_device "$COCKPIT_OBSERVATION_TMP") || {
+    home_summary_fail "private summary published, but Cockpit publication device could not be verified"
+    return 1
+  }
+  COCKPIT_OBSERVATION_IDENTITY=$(fm_pr_file_identity "$COCKPIT_OBSERVATION_TMP") || {
+    home_summary_fail "private summary published, but Cockpit publication identity could not be verified"
+    return 1
+  }
   if ! mv -f -- "$COCKPIT_OBSERVATION_TMP" "$COCKPIT_LEDGER" 2>/dev/null; then
     home_summary_fail "private summary published, but atomic Cockpit observation replacement failed: $COCKPIT_LEDGER"
     return 1
   fi
   COCKPIT_OBSERVATION_TMP=
+  if ! fm_pr_private_file_valid "$COCKPIT_LEDGER" 600 "$COCKPIT_OBSERVATION_DEVICE" \
+    || [ "$(fm_pr_file_identity "$COCKPIT_LEDGER" 2>/dev/null || true)" \
+      != "$COCKPIT_OBSERVATION_IDENTITY" ]; then
+    home_summary_fail "private summary published, but Cockpit observation target changed during atomic replacement: $COCKPIT_LEDGER"
+    return 1
+  fi
   fm_lock_release "$REFRESH_LOCK"
   HOME_SUMMARY_LOCK_HELD=0
   trap - EXIT HUP INT TERM
