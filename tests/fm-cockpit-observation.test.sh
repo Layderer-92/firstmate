@@ -8,6 +8,7 @@ set -u
 
 EXPORTER="$ROOT/bin/fm-cockpit-observation.sh"
 WRITER="$ROOT/bin/fm-home-summary-refresh.sh"
+BOOTSTRAP="$ROOT/bin/fm-bootstrap.sh"
 SCHEMA="$ROOT/contracts/fm-cockpit-observation-v1.schema.json"
 CORPUS="$ROOT/tests/assets/fm-cockpit-observation-v1.conformance.json"
 TMP_ROOT=$(fm_test_tmproot fm-cockpit-observation)
@@ -324,6 +325,17 @@ exit 91
 SH
   chmod +x "$FAKEBIN/$command_name"
 done
+REAL_DATE=$(command -v date)
+cat > "$FAKEBIN/date" <<SH
+#!/usr/bin/env bash
+if [ "\${1:-}" = -u ] && [ "\${2:-}" = +%Y-%m-%dT%H:%M:%SZ ] \
+    && [ -n "\${FM_TEST_FIXED_DATE:-}" ]; then
+  printf '%s\n' "\$FM_TEST_FIXED_DATE"
+  exit 0
+fi
+exec "$REAL_DATE" "\$@"
+SH
+chmod +x "$FAKEBIN/date"
 
 SUMMARY="$TMP_ROOT/private-summary.json"
 cat > "$SUMMARY" <<EOF
@@ -484,6 +496,31 @@ fi
 if find "$HOME_DIR/state/cockpit-observation.json" -mindepth 1 -print -quit | grep -q .; then
   fail "publisher moved the staged observation into the unsafe directory"
 fi
+PATH="$FAKEBIN:$PATH" FM_TEST_EXTERNAL_CALL_LOG="$CALL_LOG" \
+  FM_TEST_FIXED_DATE="2026-09-04T20:08:00Z" \
+  FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$HOME_DIR" \
+  FM_SNAPSHOT_NOW="2026-09-04T20:08:00Z" FM_SNAPSHOT_NOW_EPOCH=1788552480 \
+  "$WRITER" --best-effort \
+  || fail "first Cockpit publication failure changed the best-effort result"
+PATH="$FAKEBIN:$PATH" FM_TEST_EXTERNAL_CALL_LOG="$CALL_LOG" \
+  FM_TEST_FIXED_DATE="2026-09-04T20:09:00Z" \
+  FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$HOME_DIR" \
+  FM_SNAPSHOT_NOW="2026-09-04T20:09:00Z" FM_SNAPSHOT_NOW_EPOCH=1788552540 \
+  "$WRITER" --best-effort \
+  || fail "second Cockpit publication failure changed the best-effort result"
+BOOTSTRAP_OUT=$(PATH="$FAKEBIN:$PATH" FM_TEST_EXTERNAL_CALL_LOG="$CALL_LOG" \
+  FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$HOME_DIR" \
+  FM_BOOTSTRAP_DETECT_ONLY=1 FM_BOOTSTRAP_NETWORK=skip \
+  "$BOOTSTRAP" 2>/dev/null)
+printf '%s\n' "$BOOTSTRAP_OUT" \
+  | grep -F 'HOME_SUMMARY: this home has never published state/cockpit-observation.json' \
+    >/dev/null \
+  || fail "repeated Cockpit publication failure was not reported: $BOOTSTRAP_OUT"
+printf '%s\n' "$BOOTSTRAP_OUT" | grep -F '2 failed attempt(s)' >/dev/null \
+  || fail "Cockpit publication failure report omitted the retry count: $BOOTSTRAP_OUT"
+printf '%s\n' "$BOOTSTRAP_OUT" | grep -F 'Cockpit export target is unsafe' >/dev/null \
+  || fail "Cockpit publication failure report omitted the cause: $BOOTSTRAP_OUT"
+pass "repeated Cockpit publication failure remains visible at session start"
 rmdir "$HOME_DIR/state/cockpit-observation.json" \
   || fail "unsafe fixture directory was not empty"
 ln -s "$PUBLIC_BEFORE_UNSAFE_TARGET" "$HOME_DIR/state/cockpit-observation.json"
