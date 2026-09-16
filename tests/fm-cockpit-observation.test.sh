@@ -370,6 +370,13 @@ fi
 [ ! -s "$CALL_LOG" ] || fail "projection executed an external command: $(cat "$CALL_LOG")"
 pass "projection emits only the exact redacted schema"
 
+MISSING_INVALIDITY_KIND_SUMMARY="$TMP_ROOT/missing-invalidity-kind-summary.json"
+jq 'del(.invalidity.kind)' "$SUMMARY" > "$MISSING_INVALIDITY_KIND_SUMMARY"
+if "$EXPORTER" --project-summary "$MISSING_INVALIDITY_KIND_SUMMARY" >/dev/null 2>&1; then
+  fail "private summary without invalidity kind was projected"
+fi
+pass "projection rejects private summaries without invalidity kind"
+
 printf '%s\n' "$PUBLIC_JSON" > "$HOME_DIR/state/cockpit-observation.json"
 chmod 644 "$HOME_DIR/state/cockpit-observation.json"
 READ_BACK=$(FM_HOME="$HOME_DIR" "$EXPORTER" --json) \

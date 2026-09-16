@@ -90,6 +90,7 @@ project_summary() {  # <private-summary-path>
       or .state == "active_child_work" or .state == "externally_held"
       or .state == "no_active_work")
     and (.invalidity | type) == "object"
+    and (.invalidity | has("kind"))
     and (.invalidity.kind == null or .invalidity.kind == "missing_backlog"
       or .invalidity.kind == "unstructured_current" or .invalidity.kind == "orphan_in_flight"
       or .invalidity.kind == "unowned_current" or .invalidity.kind == "terminal_in_flight"
