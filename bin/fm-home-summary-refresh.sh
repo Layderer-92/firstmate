@@ -30,9 +30,10 @@
 # fm-cockpit-observation.sh from the newly published ledger, then atomically
 # publishes it and verifies the staged file's identity at the destination.
 # Without that home-local flag, the private ledger is still published and the
-# refresh removes only a regular, single-linked, mode-0600 prior observation
-# whose device, identity, and bytes remain stable through the removal check.
-# Unsafe or exchanged targets are left untouched and never followed.
+# refresh then removes only a regular, single-linked, mode-0600 prior
+# observation whose device, identity, and bytes still match at the final
+# pre-removal check. Targets are never followed, and an unsafe target or an
+# exchange detected before removal is left untouched.
 # A Cockpit failure leaves the new private ledger in place and preserves any
 # prior complete observation unless an external actor replaced it.
 set -u
