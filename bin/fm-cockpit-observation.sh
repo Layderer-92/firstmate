@@ -8,7 +8,7 @@
 # `--json` validates and prints this home's atomically published
 # state/cockpit-observation.json without reading any other home state.
 # `--project-summary` is the pure projection used by fm-home-summary-refresh.sh
-# against its already-produced and validated private summary temporary file.
+# against its already-published and validated private summary ledger.
 # Neither mode runs a backend, provider, remote, no-mistakes, or agent command.
 #
 # `contracts/fm-cockpit-observation-v1.schema.json` owns the canonical Draft
@@ -22,11 +22,7 @@ FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 PUBLIC_OBSERVATION="$STATE/cockpit-observation.json"
-MAX_BYTES=${FM_COCKPIT_OBSERVATION_MAX_BYTES:-65536}
-
-case "$MAX_BYTES" in
-  ''|*[!0-9]*|0) MAX_BYTES=65536 ;;
-esac
+readonly MAX_BYTES=65536
 
 usage() {
   sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'
@@ -48,7 +44,8 @@ regular_bounded_file() {  # <path>
 }
 
 public_document_valid() {  # <path>
-  jq -e '
+  jq -s -e '
+    length == 1 and (.[0] |
     (keys == ["counts","data_class","invalidity","observed_at","observed_epoch","schema","state","valid"])
     and .schema == "fm-cockpit-observation.v1"
     and .data_class == "internal_non_sensitive"
@@ -70,7 +67,7 @@ public_document_valid() {  # <path>
     and (.valid == (.invalidity == null))
     and (.counts | type) == "object"
     and (.counts | keys == ["active_children","decisions_open","endpoints","holds","landed","queued"])
-    and all(.counts[]; type == "number" and . >= 0 and (floor == .))
+    and all(.counts[]; type == "number" and . >= 0 and (floor == .)))
   ' "$1" >/dev/null 2>&1
 }
 
@@ -78,7 +75,8 @@ project_summary() {  # <private-summary-path>
   local source=$1 document bytes
   regular_file "$source" \
     || { echo "fm-cockpit-observation: private summary is missing or unsafe" >&2; return 1; }
-  if ! jq -e '
+  if ! jq -s -e '
+    length == 1 and (.[0] |
     .schema == "fm-secondmate-home-summary.v1"
     and (.generated | type) == "string"
     and (.generated | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
@@ -105,12 +103,12 @@ project_summary() {  # <private-summary-path>
       .counts.queued,
       .counts.landed,
       .counts.endpoints
-    ][]; type == "number" and . >= 0 and (floor == .))
+    ][]; type == "number" and . >= 0 and (floor == .)))
   ' "$source" >/dev/null 2>&1; then
     echo "fm-cockpit-observation: private summary is malformed" >&2
     return 1
   fi
-  document=$(jq -c '
+  document=$(jq -s -c '.[0] |
     {
       schema:"fm-cockpit-observation.v1",
       data_class:"internal_non_sensitive",
@@ -145,7 +143,7 @@ case "${1:-}" in
       || { echo "fm-cockpit-observation: public observation is missing, unsafe, or oversized" >&2; exit 1; }
     public_document_valid "$PUBLIC_OBSERVATION" \
       || { echo "fm-cockpit-observation: public observation is malformed" >&2; exit 1; }
-    jq -c . "$PUBLIC_OBSERVATION"
+    jq -s -c '.[0]' "$PUBLIC_OBSERVATION"
     ;;
   --project-summary)
     [ "$#" -eq 2 ] || { usage >&2; exit 2; }

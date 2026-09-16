@@ -202,7 +202,7 @@ home_summary_refresh_once() {
     home_summary_fail "private summary published, but Cockpit observation projection failed"
     return 1
   fi
-  if ! chmod 644 "$COCKPIT_OBSERVATION_TMP" 2>/dev/null; then
+  if ! chmod 600 "$COCKPIT_OBSERVATION_TMP" 2>/dev/null; then
     home_summary_fail "private summary published, but Cockpit publication mode failed"
     return 1
   fi

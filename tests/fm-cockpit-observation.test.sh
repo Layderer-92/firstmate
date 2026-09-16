@@ -301,11 +301,6 @@ for vector_class in sorted(required_classes):
     print(f"ok - conformance {vector_class}: {count} {noun}")
 PY
 
-if [ "${FM_COCKPIT_OBSERVATION_CONFORMANCE_ONLY:-0}" = 1 ]; then
-  echo "all cockpit observation conformance tests passed"
-  exit 0
-fi
-
 file_mode() {
   stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"
 }
@@ -383,6 +378,23 @@ READ_BACK=$(FM_HOME="$HOME_DIR" "$EXPORTER" --json) \
   || fail "stdout mode changed the public document"
 pass "stdout mode validates and returns the public document"
 
+{
+  printf '{"home":"/secret/home","doing":"private prompt text"}\n'
+  printf '%s\n' "$PUBLIC_JSON"
+} > "$HOME_DIR/state/cockpit-observation.json"
+if FM_HOME="$HOME_DIR" "$EXPORTER" --json >/dev/null 2>&1; then
+  fail "multiple public JSON values were accepted"
+fi
+MULTI_SUMMARY="$TMP_ROOT/multiple-private-summaries.json"
+{
+  printf '{"home":"/secret/home","doing":"private prompt text"}\n'
+  cat "$SUMMARY"
+} > "$MULTI_SUMMARY"
+if "$EXPORTER" --project-summary "$MULTI_SUMMARY" >/dev/null 2>&1; then
+  fail "multiple private JSON values were projected"
+fi
+pass "multiple JSON values are rejected before projection or read-back"
+
 printf '%s' "$PUBLIC_JSON" | jq '.observed_epoch += 1' \
   > "$HOME_DIR/state/cockpit-observation.json"
 if FM_HOME="$HOME_DIR" "$EXPORTER" --json >/dev/null 2>&1; then
@@ -438,8 +450,8 @@ AFTER_STATE=$(find "$HOME_DIR/state" -mindepth 1 -maxdepth 1 \
 [ "$BEFORE_STATE" = "$AFTER_STATE" ] || fail "publisher left unrelated home-state changes"
 [ "$BEFORE_SENTINEL" = "$(cksum "$HOME_DIR/state/unrelated-state")" ] \
   || fail "publisher changed unrelated home state"
-[ "$(file_mode "$HOME_DIR/state/cockpit-observation.json")" = 644 ] \
-  || fail "public observation mode is not 0644"
+[ "$(file_mode "$HOME_DIR/state/cockpit-observation.json")" = 600 ] \
+  || fail "public observation mode is not 0600"
 FM_HOME="$HOME_DIR" "$EXPORTER" --json | jq -e '
   .observed_at == "2026-09-04T20:05:00Z"
   and .observed_epoch == 1788552300
@@ -480,27 +492,5 @@ rm -f "$HOME_DIR/state/cockpit-observation.json"
 cp -p "$PUBLIC_BEFORE_UNSAFE_TARGET" "$HOME_DIR/state/cockpit-observation.json" \
   || fail "could not restore the fixture public observation"
 pass "writer rejects directory and symlink export targets without moving into them"
-
-PUBLIC_BEFORE_FAILURE=$(cksum "$HOME_DIR/state/cockpit-observation.json")
-if PATH="$FAKEBIN:$PATH" FM_TEST_EXTERNAL_CALL_LOG="$CALL_LOG" \
-  FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$HOME_DIR" \
-  FM_COCKPIT_OBSERVATION_MAX_BYTES=1 \
-  FM_SNAPSHOT_NOW="2026-09-04T20:06:00Z" FM_SNAPSHOT_NOW_EPOCH=1788552360 \
-  "$WRITER" >/dev/null 2>&1; then
-  fail "forced Cockpit projection failure was reported as success"
-fi
-jq -e '
-  .generated == "2026-09-04T20:06:00Z"
-  and .generated_epoch == 1788552360
-' "$HOME_DIR/state/home-summary.json" >/dev/null \
-  || fail "Cockpit projection failure prevented the private summary publication"
-[ "$PUBLIC_BEFORE_FAILURE" = "$(cksum "$HOME_DIR/state/cockpit-observation.json")" ] \
-  || fail "Cockpit projection failure changed the prior public observation"
-if find "$HOME_DIR/state" -maxdepth 1 \
-    \( -name '.home-summary.json.*' -o -name '.cockpit-observation.json.*' \) \
-    -print -quit | grep -q .; then
-  fail "failed additive publication left a temporary file"
-fi
-pass "Cockpit projection failure preserves canonical and prior public state"
 
 echo "all cockpit observation tests passed"
