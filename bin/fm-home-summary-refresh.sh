@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fm-home-summary-refresh.sh - publish this home's structured summary ledger.
+# fm-home-summary-refresh.sh - publish this home's private summary and redacted Cockpit observation.
 #
 # Usage: fm-home-summary-refresh.sh [--best-effort]
 #
@@ -25,8 +25,10 @@
 # teardown use that mode so this side-band publication can never change their
 # result. Without it, failures are printed and returned to the direct caller
 # for tests and diagnostics.
-# The same locked refresh also derives and atomically publishes the redacted
-# state/cockpit-observation.json contract owned by fm-cockpit-observation.sh.
+# The same locked refresh derives the redacted state/cockpit-observation.json
+# contract owned by fm-cockpit-observation.sh from the newly published ledger,
+# then atomically publishes it. A Cockpit failure leaves the new private ledger
+# in place and preserves any prior complete observation.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
