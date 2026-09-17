@@ -1,0 +1,30 @@
+## S3a published observation validated by an independent Draft 2020-12 validator (python jsonschema 4.10.3)
+schema is a well-formed Draft 2020-12 schema: yes ($schema=https://json-schema.org/draft/2020-12/schema)
+published state/cockpit-observation.json valid against schema: True []
+vendor x- extensions in schema: none
+schema mentions x-firstmate-consumer-semantics: False
+schema mentions freshnessThresholdMilliseconds: False
+schema mentions source_clock_ahead: False
+schema mentions source_invalid: False
+corpus classes: ['canonical_timestamp', 'counts', 'enums', 'exact_keys', 'timestamp_epoch_identity', 'valid', 'validity_coupling']
+corpus vector fields beyond id/class/document/schema_valid/contract_valid/description: none
+corpus vector ids containing 'future': none
+corpus schema_valid expectations confirmed by independent validator: 18/18 
+
+## S3b no consumer freshness / clock-ahead semantics in the canonical reader
+$ bin/fm-cockpit-observation.sh --json   (far-future observation: observed_at=2099-01-01T00:00:00Z, host clock now=2026-09-17T07:00:45Z)
+{"schema":"fm-cockpit-observation.v1","data_class":"internal_non_sensitive","observed_at":"2099-01-01T00:00:00Z","observed_epoch":4070908800,"state":"captain_decision","valid":true,"invalidity":null,"counts":{"active_children":0,"decisions_open":1,"holds":1,"queued":1,"landed":0,"endpoints":1}}
+exit=0
+  schema-valid: True
+$ bin/fm-cockpit-observation.sh --json   (stale-epoch-zero observation: observed_at=1970-01-01T00:00:00Z, host clock now=2026-09-17T07:00:45Z)
+{"schema":"fm-cockpit-observation.v1","data_class":"internal_non_sensitive","observed_at":"1970-01-01T00:00:00Z","observed_epoch":0,"state":"captain_decision","valid":true,"invalidity":null,"counts":{"active_children":0,"decisions_open":1,"holds":1,"queued":1,"landed":0,"endpoints":1}}
+exit=0
+  schema-valid: True
+external commands run by the reader: 0
+
+## S3c schema vs replaced PR head d3ee4237
+root keys removed: ['x-firstmate-consumer-semantics'] added: []
+schema otherwise identical: True
+corpus classes removed: ['source_clock_ahead']
+corpus vectors removed: ['future-structurally-invalid', 'future-structurally-valid']
+remaining vectors unchanged from d3ee4237: True

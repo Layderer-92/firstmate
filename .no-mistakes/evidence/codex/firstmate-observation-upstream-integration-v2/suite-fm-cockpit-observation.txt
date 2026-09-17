@@ -1,0 +1,31 @@
+ok - conformance canonical_timestamp: 3 vectors
+ok - conformance counts: 2 vectors
+ok - conformance enums: 15 vectors
+ok - conformance exact_keys: 4 vectors
+ok - conformance timestamp_epoch_identity: 1 vector
+ok - conformance valid: 2 vectors
+ok - conformance validity_coupling: 2 vectors
+ok - projection emits only the exact redacted schema
+ok - projection rejects private summaries without invalidity kind
+ok - stdout mode is off by default without the home opt-in
+ok - stdout mode validates and returns the public document
+ok - validation and emission consume one opened observation document
+ok - multiple JSON values are rejected before projection or read-back
+ok - timestamp and epoch must describe the same observation
+ok - impossible calendar dates are rejected on projection and read-back
+ok - invalid, oversized, symlinked, and missing public files stop safely
+ok - default-off refresh keeps the private summary active without Cockpit publication
+ok - opt-out refresh retires a safe Cockpit observation
+ok - opt-out leaves unsafe Cockpit targets untouched
+ok - home-summary refresh atomically publishes the redacted public observation
+ok - a failed Cockpit replacement preserves the prior observation byte-for-byte
+ok - Cockpit publication detects a target exchanged during atomic replacement
+ok - bootstrap trusts only a validated bounded observation timestamp
+ok - repeated Cockpit publication failure remains visible at session start
+ok - writer rejects directory and symlink export targets without moving into them
+all cockpit observation tests passed
+
+real	0m3.979s
+user	0m1.983s
+sys	0m0.834s
+cockpit rc=0

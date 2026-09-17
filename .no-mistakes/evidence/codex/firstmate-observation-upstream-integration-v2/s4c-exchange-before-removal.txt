@@ -1,0 +1,25 @@
+## S4c.1 flag absent, safe 0600 observation is exchanged (rename) between the snapshot and the final pre-removal check
+  before:
+  state/cockpit-observation.json: file mode=600 links=1 inode=301213 sha=86f14201728494a1
+$ bin/fm-home-summary-refresh.sh   (hash tool interposed on PATH)
+  exit=0
+  injector: swap(rename) performed after hash call on /tmp/fm-cockpit-live.M7ZZL5/home-optin/state/cockpit-observation.json
+  after:
+  state/home-summary.json: file mode=600 links=1 inode=301219 sha=0616fe78f8e9b9de
+  state/cockpit-observation.json: file mode=600 links=1 inode=301220 sha=c113cc07380f9dec
+  exchanged content left in place: {"exchanged":"by another writer"}
+## S4c.2 flag absent, safe 0600 observation is exchanged (rewrite) between the snapshot and the final pre-removal check
+  before:
+  state/cockpit-observation.json: file mode=600 links=1 inode=301213 sha=86f14201728494a1
+$ bin/fm-home-summary-refresh.sh   (hash tool interposed on PATH)
+  exit=0
+  injector: swap(rewrite) performed after hash call on /tmp/fm-cockpit-live.M7ZZL5/home-optin/state/cockpit-observation.json
+  after:
+  state/home-summary.json: file mode=600 links=1 inode=301218 sha=845c3cc5c6f2cfa6
+  state/cockpit-observation.json: file mode=600 links=1 inode=301213 sha=12019b62c0b0a6da
+  exchanged content left in place: {"rewritten":"in place"}
+
+## S4c.3 control: same interposed hash tool, no exchange -> safe observation is retired
+  exit=0
+  state/home-summary.json: file mode=600 links=1 inode=301221 sha=5cef3baaca9c8188
+  state/cockpit-observation.json: absent

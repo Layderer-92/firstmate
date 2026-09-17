@@ -1,0 +1,26 @@
+## S1 default-off home: no config/cockpit-observation
+$ ls config/
+(empty)
+$ bin/fm-home-summary-refresh.sh   (branch build, FM_SNAPSHOT_NOW=2026-09-17T09:00:00Z)
+exit=0
+  state/home-summary.json: file mode=600 links=1 inode=299459 sha=8cb8b0d5d6becaef
+  state/cockpit-observation.json: absent
+$ bin/fm-cockpit-observation.sh --json
+fm-cockpit-observation: Cockpit observation is disabled for this home
+exit=1
+
+## Private summary still carries private data (proves redaction has something to redact):
+{"home":"/tmp/fm-cockpit-live.M7ZZL5/home-default","generated":"2026-09-17T09:00:00Z","state":"unknown","valid":false,"counts":{"active_children":0,"decisions_open":0,"holds":0,"queued":1,"landed":0,"endpoints":1},"active":[],"decisions":[],"queued":[{"id":"canary-queued-9","title":"CANARY_QUEUED_TITLE follow-up"}]}
+
+## Upstream parity: same home, same clock, base commit 334fa12 build
+base exit=0
+  state/home-summary.json: file mode=600 links=1 inode=299496 sha=8cb8b0d5d6becaef
+  state/cockpit-observation.json: absent
+state/home-summary.json byte-identical between branch and upstream base builds: yes
+external calls logged: 6
+tmux display-message -p -t fmtest:fm-canary-task-7 #{pane_id}
+no-mistakes axi status
+tmux display-message -p -t fmtest:fm-canary-task-7 #{pane_id}
+tmux display-message -p -t fmtest:fm-canary-task-7 #{pane_id}
+no-mistakes axi status
+tmux display-message -p -t fmtest:fm-canary-task-7 #{pane_id}

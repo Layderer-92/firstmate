@@ -1,0 +1,54 @@
+## S4a opt-out: remove config/cockpit-observation, next refresh retires the safe 0600 observation
+  state/home-summary.json: file mode=600 links=1 inode=301208 sha=7aeb6c3885a7f5b0
+  state/cockpit-observation.json: file mode=600 links=1 inode=301209 sha=86f14201728494a1
+$ rm config/cockpit-observation && bin/fm-home-summary-refresh.sh  (FM_SNAPSHOT_NOW=2026-09-17T09:20:00Z)
+exit=0
+  state/home-summary.json: file mode=600 links=1 inode=301215 sha=a55e5de3464a0a37
+  state/cockpit-observation.json: absent
+private summary republished: generated=2026-09-17T09:20:00Z
+$ bin/fm-cockpit-observation.sh --json
+fm-cockpit-observation: Cockpit observation is disabled for this home
+exit=1
+refresh failure log: none
+
+## S4b.1 flag absent, target is a symlink to an outside 0600 file
+  before:
+  state/cockpit-observation.json: symlink -> /tmp/fm-cockpit-live.M7ZZL5/outside-sentinel.txt
+$ bin/fm-home-summary-refresh.sh --best-effort  (FM_SNAPSHOT_NOW=2026-09-17T09:31:00Z)
+  exit=0
+  after:
+  state/home-summary.json: file mode=600 links=1 inode=301216 sha=13a16a0aef9eb816
+  state/cockpit-observation.json: symlink -> /tmp/fm-cockpit-live.M7ZZL5/outside-sentinel.txt
+  private summary generated=2026-09-17T09:31:00Z
+  outside sentinel still: OUTSIDE SENTINEL (mode 600)
+## S4b.2 flag absent, target is a directory
+  before:
+  state/cockpit-observation.json: directory
+$ bin/fm-home-summary-refresh.sh --best-effort  (FM_SNAPSHOT_NOW=2026-09-17T09:32:00Z)
+  exit=0
+  after:
+  state/home-summary.json: file mode=600 links=1 inode=301217 sha=cd25c5c2ad14b50e
+  state/cockpit-observation.json: directory
+  private summary generated=2026-09-17T09:32:00Z
+  directory contents kept: inner
+## S4b.3 flag absent, target is a legacy 0644 observation from an earlier build of this PR
+  before:
+  state/cockpit-observation.json: file mode=644 links=1 inode=301208 sha=86f14201728494a1
+$ bin/fm-home-summary-refresh.sh --best-effort  (FM_SNAPSHOT_NOW=2026-09-17T09:33:00Z)
+  exit=0
+  after:
+  state/home-summary.json: file mode=600 links=1 inode=301215 sha=f6313321c2498ec9
+  state/cockpit-observation.json: file mode=644 links=1 inode=301208 sha=86f14201728494a1
+  private summary generated=2026-09-17T09:33:00Z
+## S4b.4 flag absent, target is a multiply-linked 0600 file
+  before:
+  state/cockpit-observation.json: file mode=600 links=2 inode=301208 sha=86f14201728494a1
+$ bin/fm-home-summary-refresh.sh --best-effort  (FM_SNAPSHOT_NOW=2026-09-17T09:34:00Z)
+  exit=0
+  after:
+  state/home-summary.json: file mode=600 links=1 inode=301216 sha=db9f35bf33ff5ef9
+  state/cockpit-observation.json: file mode=600 links=2 inode=301208 sha=86f14201728494a1
+  private summary generated=2026-09-17T09:34:00Z
+  still the same inode as the second link: yes
+
+refresh failure log after unsafe-target cases: none

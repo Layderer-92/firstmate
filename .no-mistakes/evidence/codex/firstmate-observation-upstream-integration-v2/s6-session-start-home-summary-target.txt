@@ -1,0 +1,47 @@
+## S6a default-off home: private summary published once, later publications keep failing; a newer legacy 0644 observation sits in state/
+--- branch build (43880b6)
+$ bin/fm-session-start.sh   # 1st start, publication succeeds
+(no HOME_SUMMARY line)
+  state/home-summary.json generated=2026-09-17T07:03:41Z
+  seeded legacy state/cockpit-observation.json (0644, observed_at=2099-01-01T00:00:00Z); config/cockpit-observation absent
+$ bin/fm-session-start.sh   # start 2, atomic rename onto state/home-summary.json refused
+(no HOME_SUMMARY line)
+$ bin/fm-session-start.sh   # start 3, atomic rename onto state/home-summary.json refused
+HOME_SUMMARY: state/home-summary.json has not been republished since 2026-09-17T07:03:41Z; 2 failed attempt(s) recorded in state/.home-summary-refresh.log, last: atomic ledger replacement failed: <home>/state/home-summary.json
+  state/home-summary.json: file mode=600 links=1 inode=302056 sha=8f96d209cdd3781b
+  state/cockpit-observation.json: file mode=644 links=1 inode=302047 sha=583c5e8c3537a48e
+--- base build (upstream base 334fa12)
+$ bin/fm-session-start.sh   # 1st start, publication succeeds
+(no HOME_SUMMARY line)
+  state/home-summary.json generated=2026-09-17T07:03:51Z
+  seeded legacy state/cockpit-observation.json (0644, observed_at=2099-01-01T00:00:00Z); config/cockpit-observation absent
+$ bin/fm-session-start.sh   # start 2, atomic rename onto state/home-summary.json refused
+(no HOME_SUMMARY line)
+$ bin/fm-session-start.sh   # start 3, atomic rename onto state/home-summary.json refused
+HOME_SUMMARY: state/home-summary.json has not been republished since 2026-09-17T07:03:51Z; 2 failed attempt(s) recorded in state/.home-summary-refresh.log, last: atomic ledger replacement failed: <home>/state/home-summary.json
+  state/home-summary.json: file mode=600 links=1 inode=302132 sha=8fc2ee1f28c210db
+  state/cockpit-observation.json: file mode=644 links=1 inode=302123 sha=583c5e8c3537a48e
+
+## S6b opted-in home: private summary publishes every time, but state/cockpit-observation.json is an unsafe directory
+$ bin/fm-session-start.sh   # start 1
+(no HOME_SUMMARY line)
+  state/home-summary.json generated=2026-09-17T07:04:01Z
+$ bin/fm-session-start.sh   # start 2
+HOME_SUMMARY: this home has never published state/cockpit-observation.json; 2 failed attempt(s) recorded in state/.home-summary-refresh.log, last: private summary published, but Cockpit export target is unsafe
+  state/home-summary.json generated=2026-09-17T07:04:05Z
+refresh log:
+  [2026-09-17T07:04:02Z] private summary published, but Cockpit export target is unsafe
+  [2026-09-17T07:04:05Z] private summary published, but Cockpit export target is unsafe
+
+## S6c opted-in home: observation published once by a session start, then replacement keeps failing
+$ bin/fm-session-start.sh   # 1st start, both publications succeed
+(no HOME_SUMMARY line)
+  state/home-summary.json: file mode=600 links=1 inode=302288 sha=3a071fae29991995
+  state/cockpit-observation.json: file mode=600 links=1 inode=302289 sha=eca14d85b9977c16
+  observed_at=2026-09-17T07:04:08Z
+$ bin/fm-session-start.sh   # start 2, atomic rename onto state/cockpit-observation.json refused
+(no HOME_SUMMARY line)
+  state/home-summary.json generated=2026-09-17T07:04:11Z (private summary keeps publishing)
+$ bin/fm-session-start.sh   # start 3, atomic rename onto state/cockpit-observation.json refused
+HOME_SUMMARY: state/cockpit-observation.json has not been republished since 2026-09-17T07:04:08Z; 2 failed attempt(s) recorded in state/.home-summary-refresh.log, last: private summary published, but atomic Cockpit observation replacement failed: <home>/state/cockpit-observation.json
+  state/home-summary.json generated=2026-09-17T07:04:15Z (private summary keeps publishing)

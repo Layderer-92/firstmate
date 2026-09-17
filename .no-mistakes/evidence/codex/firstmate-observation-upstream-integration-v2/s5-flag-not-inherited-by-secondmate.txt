@@ -1,0 +1,55 @@
+## S5a primary opted in; convergence push to a live secondmate home
+primary config/: cockpit-observation crew-harness 
+secondmate config/ before: 
+$ bin/fm-config-push.sh
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision according to the session-start block for this harness; do not use shell &.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+config-push: /tmp/fm-cockpit-live.M7ZZL5/primary-home -> live secondmate homes
+secondmate sm (/tmp/fm-cockpit-live.M7ZZL5/sm-home):
+  crew-dispatch.json: unchanged
+  crew-harness: pushed
+  backlog-backend: unchanged
+  backend: unchanged
+  herdr-presentation-spaces: unchanged
+  startup-memory-budget: unchanged
+  trace-context: unchanged - session-scoped
+  launch-env-allowlist: unchanged
+  claude-permission-mode: unchanged
+  data/captain-shared.md: unchanged
+CONFIG_REREAD: secondmate sm: send failed: error: no-mistakes gate agent must not drive the fleet (NO_MISTAKES_GATE set)
+exit=1
+secondmate config/ after: crew-harness 
+secondmate config/cockpit-observation exists: no
+secondmate config/crew-harness (control, inherited item): codex
+
+## S5b secondmate refresh after the push stays default-off
+exit=0
+  state/home-summary.json: file mode=600 links=1 inode=301913 sha=46d1b3cd27c97e01
+  state/cockpit-observation.json: absent
+fm-cockpit-observation: Cockpit observation is disabled for this home
+reader exit=1
+
+## S5c primary NOT opted in, secondmate opted in locally: the push must not mirror absence onto the secondmate's own flag
+primary config/: crew-harness    secondmate config/: cockpit-observation crew-harness 
+$ bin/fm-config-push.sh
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+config-push: /tmp/fm-cockpit-live.M7ZZL5/primary-home -> live secondmate homes
+secondmate sm (/tmp/fm-cockpit-live.M7ZZL5/sm-home):
+  crew-dispatch.json: unchanged
+  crew-harness: unchanged
+  backlog-backend: unchanged
+  backend: unchanged
+  herdr-presentation-spaces: unchanged
+  startup-memory-budget: unchanged
+  trace-context: unchanged - session-scoped
+  launch-env-allowlist: unchanged
+  claude-permission-mode: unchanged
+  data/captain-shared.md: unchanged
+CONFIG_REREAD: secondmate sm: send failed: error: no-mistakes gate agent must not drive the fleet (NO_MISTAKES_GATE set)
+exit=1
+secondmate config/cockpit-observation still present: yes

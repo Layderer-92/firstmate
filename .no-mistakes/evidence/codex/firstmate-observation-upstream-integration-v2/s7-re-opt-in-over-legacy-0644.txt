@@ -1,0 +1,11 @@
+## S7 legacy 0644 observation from an earlier build; home opts in again
+  state/home-summary.json: absent
+  state/cockpit-observation.json: file mode=644 links=1 inode=302355 sha=006e692f9f3186a1
+$ touch config/cockpit-observation && bin/fm-home-summary-refresh.sh   (FM_SNAPSHOT_NOW=2026-09-17T12:00:00Z)
+exit=0
+  state/home-summary.json: file mode=600 links=1 inode=302362 sha=6c91b55d827ba92a
+  state/cockpit-observation.json: file mode=600 links=1 inode=302363 sha=4e2762b175745f2d
+$ bin/fm-cockpit-observation.sh --json
+{"schema":"fm-cockpit-observation.v1","data_class":"internal_non_sensitive","observed_at":"2026-09-17T12:00:00Z","observed_epoch":1789646400,"state":"captain_decision","valid":true,"invalidity":null,"counts":{"active_children":0,"decisions_open":1,"holds":1,"queued":1,"landed":0,"endpoints":1}}
+exit=0
+leftover staging files: 0

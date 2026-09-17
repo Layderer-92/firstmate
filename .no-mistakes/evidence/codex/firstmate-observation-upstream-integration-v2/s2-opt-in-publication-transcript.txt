@@ -1,0 +1,42 @@
+## S2 opt-in home: config/cockpit-observation present (contents deliberately say 'off' - only presence is read)
+$ cat config/cockpit-observation
+off
+$ bin/fm-home-summary-refresh.sh   (FM_SNAPSHOT_NOW=2026-09-17T09:10:00Z)
+exit=0
+  state/home-summary.json: file mode=600 links=1 inode=301208 sha=7aeb6c3885a7f5b0
+  state/cockpit-observation.json: file mode=600 links=1 inode=301209 sha=86f14201728494a1
+$ ls -la state/ (no staging leftovers)
+total 32
+drwxr-xr-x .
+drwxr-xr-x ..
+-rw------- canary-task-7.busy-gen
+-rw------- canary-task-7.busy-state
+-rw-r--r-- canary-task-7.meta
+-rw-r--r-- canary-task-7.status
+-rw------- cockpit-observation.json
+-rw------- home-summary.json
+
+$ bin/fm-cockpit-observation.sh --json
+{"schema":"fm-cockpit-observation.v1","data_class":"internal_non_sensitive","observed_at":"2026-09-17T09:10:00Z","observed_epoch":1789636200,"state":"captain_decision","valid":true,"invalidity":null,"counts":{"active_children":0,"decisions_open":1,"holds":1,"queued":1,"landed":0,"endpoints":1}}
+exit=0
+
+## Private summary (same refresh) - fields that must NOT cross the boundary:
+{"home":"/tmp/fm-cockpit-live.M7ZZL5/home-optin","generated":"2026-09-17T09:10:00Z","state":"captain_decision","valid":true,"invalidity":{"kind":null,"ids":[]},"counts":{"active_children":0,"decisions_open":1,"holds":1,"queued":1,"landed":0,"endpoints":1},"decisions":[{"id":"canary-task-7","key":"canary-key","summary":"CANARY_DECISION_TEXT choose a vault"}],"queued":[{"id":"canary-queued-9","title":"CANARY_QUEUED_TITLE follow-up"}],"endpoints":[{"id":"canary-task-7","target":"fmtest:fm-canary-task-7"}]}
+
+## Redaction checks on the published observation file
+exact 8 top-level keys: yes
+absent from observation: /tmp/fm-cockpit-live.M7ZZL5/home-optin
+absent from observation: /tmp
+absent from observation: CANARY
+absent from observation: canary-task-7
+absent from observation: canary-queued-9
+absent from observation: canary-key
+absent from observation: fmtest
+absent from observation: vault
+absent from observation: firstmate
+absent from observation: claude
+private-summary counts == observation counts: true
+external calls during refresh+read (fake tools on PATH):
+tmux display-message -p -t fmtest:fm-canary-task-7 #{pane_id}
+no-mistakes axi status
+tmux display-message -p -t fmtest:fm-canary-task-7 #{pane_id}
