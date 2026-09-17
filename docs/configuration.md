@@ -31,8 +31,7 @@ Ordinary dead-direct-report recovery is owned by `stuck-crewmate-recovery`, whil
 The optional local, gitignored `config/cockpit-observation` presence flag opts one home in to the redacted read-only Cockpit observation.
 Without the flag, `bin/fm-home-summary-refresh.sh` continues to publish the private `state/home-summary.json`, does not publish `state/cockpit-observation.json`, and `bin/fm-cockpit-observation.sh --json` refuses to return one.
 With the flag present, the same refresh derives and atomically publishes `state/cockpit-observation.json` from the validated private summary, and the canonical `--json` reader validates and returns it.
-Removing the flag makes the next refresh that publishes the private summary retire a prior regular, single-linked, mode-`0600` observation only while its device, identity, and bytes still match at the existing safe-file removal checks.
-A symlink, directory, wrong-mode file, or multiple-linked file is never followed or removed, an exchange detected before removal is left untouched, and the absent flag still keeps the canonical reader disabled.
+Removing the flag makes a later refresh that publishes the private summary retire only a prior observation it can verify as safe and leave unsafe or exchanged targets untouched, and the `bin/fm-home-summary-refresh.sh` header owns the exact removal conditions.
 The flag is home-local and is not part of the configuration inherited by secondmate homes.
 Only the file's presence is read, so its contents are ignored.
 The script headers own projection, validation, publication, and cleanup mechanics; [`architecture.md`](architecture.md) places this optional projection beside the always-active private summary.
